@@ -4,9 +4,16 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import { resumeAPI } from '../services/api';
 
 const ROLES = [
-  'Software Engineer', 'Frontend Developer', 'Backend Developer',
-  'Full Stack Developer', 'Data Scientist', 'ML Engineer',
-  'DevOps Engineer', 'Product Manager', 'Mobile Developer', 'AI Engineer',
+  { label: 'Software Engineer', icon: '⚙️' },
+  { label: 'Frontend Developer', icon: '🎨' },
+  { label: 'Backend Developer', icon: '🔧' },
+  { label: 'Full Stack Developer', icon: '🔀' },
+  { label: 'Data Scientist', icon: '📊' },
+  { label: 'ML Engineer', icon: '🤖' },
+  { label: 'DevOps Engineer', icon: '🚀' },
+  { label: 'Product Manager', icon: '📋' },
+  { label: 'Mobile Developer', icon: '📱' },
+  { label: 'AI Engineer', icon: '🧠' },
 ];
 
 const SCORE_COLOR = (s) => s >= 70 ? '#22c55e' : s >= 50 ? '#f59e0b' : '#ef4444';
@@ -156,16 +163,43 @@ export default function ResumeAnalyzer() {
             )}
           </div>
 
-          {/* Target role */}
+          {/* Target role — pill grid selector */}
           <div className="mb-4">
-            <label className="block text-sm font-medium t-muted mb-2">Target Role</label>
-            <select
-              value={targetRole}
-              onChange={e => setTargetRole(e.target.value)}
-              className="input-box"
-            >
-              {ROLES.map(r => <option key={r}>{r}</option>)}
-            </select>
+            <label className="block text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>
+              🎯 Target Role
+              <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(0,229,255,0.12)', color: 'var(--accent)', border: '1px solid rgba(0,229,255,0.25)' }}>
+                {targetRole}
+              </span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {ROLES.map(({ label, icon }) => {
+                const active = targetRole === label;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setTargetRole(label)}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-all text-left"
+                    style={{
+                      background: active
+                        ? 'linear-gradient(135deg, rgba(0,229,255,0.18), rgba(41,121,255,0.18))'
+                        : 'rgba(128,128,128,0.07)',
+                      border: active
+                        ? '1px solid var(--accent)'
+                        : '1px solid rgba(128,128,128,0.18)',
+                      color: active ? 'var(--accent)' : 'var(--muted)',
+                      boxShadow: active ? '0 0 10px rgba(0,229,255,0.12)' : 'none',
+                      transform: active ? 'scale(1.01)' : 'scale(1)',
+                    }}
+                  >
+                    <span className="text-base">{icon}</span>
+                    <span>{label}</span>
+                    {active && <span className="ml-auto text-xs" style={{ color: 'var(--accent)' }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {error && (
@@ -251,6 +285,10 @@ export default function ResumeAnalyzer() {
                   </div>
                   <p className="text-sm font-medium" style={{ color: SCORE_COLOR(analysis.atsScore) }}>
                     {analysis.atsScore >= 70 ? '✅ ATS Friendly' : analysis.atsScore >= 50 ? '⚠️ Needs Improvement' : '❌ Poor ATS Score'}
+                  </p>
+                  <p className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block"
+                    style={{ background: 'rgba(0,229,255,0.1)', color: 'var(--accent)', border: '1px solid rgba(0,229,255,0.2)' }}>
+                    Role: {targetRole}
                   </p>
                   <p className="text-xs t-muted mt-2 leading-relaxed">{analysis.summary}</p>
                 </div>

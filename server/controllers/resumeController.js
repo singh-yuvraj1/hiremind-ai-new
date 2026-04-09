@@ -14,16 +14,21 @@ const { extractTextFromPDF }             = require('../utils/pdfParser');
 
 /* ── ATS keyword lists ────────────────────────────────────────────── */
 
-const TECH_KEYWORDS = [
-  'react', 'node', 'python', 'java', 'javascript', 'typescript',
-  'sql', 'mongodb', 'postgresql', 'mysql', 'redis',
-  'aws', 'gcp', 'azure', 'docker', 'kubernetes', 'terraform',
-  'git', 'github', 'ci/cd', 'devops', 'linux',
-  'rest', 'graphql', 'grpc', 'microservices',
-  'machine learning', 'deep learning', 'tensorflow', 'pytorch',
-  'html', 'css', 'tailwind', 'bootstrap',
-];
+// Role-specific keyword sets — used by both rule-based fallback and AI prompt
+const ROLE_KEYWORDS = {
+  'Software Engineer':     ['algorithms', 'data structures', 'system design', 'java', 'python', 'c++', 'go', 'sql', 'rest api', 'microservices', 'git', 'testing', 'code review', 'ci/cd', 'linux', 'docker', 'design patterns', 'object-oriented', 'debugging', 'scalability'],
+  'Frontend Developer':    ['react', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'tailwind', 'redux', 'webpack', 'vite', 'responsive design', 'accessibility', 'ui/ux', 'rest api', 'graphql', 'jest', 'cypress', 'performance optimization', 'sass'],
+  'Backend Developer':     ['node.js', 'python', 'java', 'go', 'rest api', 'graphql', 'postgresql', 'mongodb', 'redis', 'microservices', 'docker', 'kubernetes', 'aws', 'authentication', 'sql', 'orm', 'message queue', 'kafka', 'rabbitmq', 'ci/cd'],
+  'Full Stack Developer':  ['react', 'node.js', 'javascript', 'typescript', 'html', 'css', 'postgresql', 'mongodb', 'rest api', 'docker', 'git', 'aws', 'redux', 'express', 'graphql', 'authentication', 'deployment', 'webpack', 'testing', 'linux'],
+  'Data Scientist':        ['python', 'pandas', 'numpy', 'scikit-learn', 'tensorflow', 'pytorch', 'sql', 'jupyter', 'statistics', 'machine learning', 'data visualization', 'matplotlib', 'seaborn', 'feature engineering', 'regression', 'classification', 'nlp', 'deep learning', 'a/b testing', 'data cleaning'],
+  'ML Engineer':           ['python', 'tensorflow', 'pytorch', 'scikit-learn', 'mlops', 'kubeflow', 'airflow', 'docker', 'kubernetes', 'aws sagemaker', 'model deployment', 'feature engineering', 'deep learning', 'transformer', 'hugging face', 'distributed training', 'gpu', 'ci/cd', 'data pipeline', 'monitoring'],
+  'DevOps Engineer':       ['docker', 'kubernetes', 'terraform', 'ansible', 'aws', 'gcp', 'azure', 'ci/cd', 'jenkins', 'github actions', 'linux', 'bash', 'prometheus', 'grafana', 'nginx', 'helm', 'vault', 'monitoring', 'infrastructure as code', 'reliability'],
+  'Product Manager':       ['product roadmap', 'user stories', 'agile', 'scrum', 'stakeholder management', 'okrs', 'kpis', 'a/b testing', 'user research', 'wireframes', 'jira', 'confluence', 'go-to-market', 'market analysis', 'prioritization', 'product strategy', 'data-driven', 'cross-functional', 'mvp', 'customer discovery'],
+  'Mobile Developer':      ['react native', 'flutter', 'swift', 'kotlin', 'ios', 'android', 'xcode', 'android studio', 'rest api', 'firebase', 'push notifications', 'offline storage', 'app store', 'play store', 'ui/ux', 'performance', 'testing', 'ci/cd', 'typescript', 'dart'],
+  'AI Engineer':           ['llm', 'langchain', 'openai', 'rag', 'vector database', 'embedding', 'fine-tuning', 'prompt engineering', 'python', 'hugging face', 'transformer', 'pytorch', 'fastapi', 'api integration', 'nlp', 'machine learning', 'mlops', 'docker', 'scalability', 'evaluation'],
+};
 
+// Soft skills are universal
 const SOFT_KEYWORDS = [
   'leadership', 'teamwork', 'communication', 'problem-solving',
   'agile', 'scrum', 'collaboration', 'analytical', 'initiative',
@@ -41,7 +46,6 @@ function ruleBasedResumeAnalysis(text, targetRole) {
   const hasPhone    = /\d{10}|\+?\d[\d\s\-().]{8,15}\d/.test(t);
   const hasLinkedIn = /linkedin\.com/.test(t);
   const hasGitHub   = /github\.com/.test(t);
-  const hasWebsite  = /https?:\/\//.test(t);
 
   // ── Sections ───────────────────────────────────────────
   const hasExp      = /\b(experience|work history|professional history|internship|employment)\b/.test(t);
@@ -51,33 +55,43 @@ function ruleBasedResumeAnalysis(text, targetRole) {
   const hasSummary  = /\b(summary|objective|profile|about me|career objective)\b/.test(t);
   const hasProjects = /\b(projects|personal projects|open.?source|github\.com)\b/.test(t);
 
-  // ── Keyword analysis ───────────────────────────────────
-  const foundTech    = TECH_KEYWORDS.filter((k) => t.includes(k));
-  const missingTech  = TECH_KEYWORDS.filter((k) => !t.includes(k)).slice(0, 8);
-  const foundSoft    = SOFT_KEYWORDS.filter((k) => t.includes(k));
+  // ── Role-specific keyword analysis ─────────────────────
+  const roleKws    = ROLE_KEYWORDS[targetRole] || ROLE_KEYWORDS['Software Engineer'];
+  const foundTech  = roleKws.filter((k) => t.includes(k.toLowerCase()));
+  const missingTech = roleKws.filter((k) => !t.includes(k.toLowerCase()));
+  // Show up to 8 most impactful missing keywords
+  const missingTop = missingTech.slice(0, 8);
+  const foundSoft  = SOFT_KEYWORDS.filter((k) => t.includes(k));
+
+  // ── Keyword match ratio (role-aware score bonus) ────────
+  const keywordMatchRatio = roleKws.length > 0 ? foundTech.length / roleKws.length : 0;
 
   // ── Quantified metrics ─────────────────────────────────
-  const hasMetrics   = /\d+\s*(%|percent|users|customers|requests|ms|seconds|million|k\s+users|x\s+faster|x\s+improvement)/.test(t);
+  const hasMetrics = /\d+\s*(%|percent|users|customers|requests|ms|seconds|million|k\s+users|x\s+faster|x\s+improvement)/.test(t);
 
   // ── Section scores (0–10) ──────────────────────────────
-  const contactScore  = (hasEmail ? 3 : 0) + (hasPhone ? 2 : 0) + (hasLinkedIn ? 3 : 0) + (hasGitHub ? 2 : 0);
-  const summaryScore  = hasSummary ? 7 : 3;
-  const expScore      = hasExp     ? (wordCount > 300 ? 9 : 6)                    : 2;
-  const skillsScore   = hasSkills  ? (foundTech.length >= 5 ? 9 : foundTech.length >= 2 ? 6 : 4) : 2;
-  const eduScore      = hasEdu     ? 8                                             : 3;
-  const achievScore   = hasAchiev  ? (hasMetrics ? 9 : 7)                          : 3;
+  const contactScore = (hasEmail ? 3 : 0) + (hasPhone ? 2 : 0) + (hasLinkedIn ? 3 : 0) + (hasGitHub ? 2 : 0);
+  const summaryScore = hasSummary ? 7 : 3;
+  const expScore     = hasExp     ? (wordCount > 300 ? 9 : 6) : 2;
+  // Skills score is now role-aware based on keyword match ratio
+  const skillsScore  = hasSkills
+    ? (keywordMatchRatio >= 0.50 ? 9 : keywordMatchRatio >= 0.30 ? 7 : keywordMatchRatio >= 0.15 ? 5 : 3)
+    : (keywordMatchRatio >= 0.20 ? 3 : 1);
+  const eduScore     = hasEdu    ? 8 : 3;
+  const achievScore  = hasAchiev ? (hasMetrics ? 9 : 7) : 3;
 
-  // ── ATS score (weighted) ───────────────────────────────
+  // ── ATS score (weighted, role-aware) ───────────────────
   const raw = (
-    contactScore * 1.5 +
-    summaryScore * 1.5 +
-    expScore     * 3   +
-    skillsScore  * 3   +
-    eduScore     * 1.5 +
-    achievScore  * 1.5 +
-    (hasProjects  ? 5  : 0) +
-    (hasMetrics   ? 5  : 0) +
-    (foundSoft.length >= 3 ? 5 : 0)
+    contactScore  * 1.5 +
+    summaryScore  * 1.5 +
+    expScore      * 3   +
+    skillsScore   * 3   +
+    eduScore      * 1.5 +
+    achievScore   * 1.5 +
+    (hasProjects             ? 5  : 0) +
+    (hasMetrics              ? 5  : 0) +
+    (foundSoft.length >= 3   ? 5  : 0) +
+    Math.round(keywordMatchRatio * 10)   // 0–10 bonus based on role keyword match
   );
 
   const atsScore = Math.min(100, Math.round(raw));
@@ -86,7 +100,8 @@ function ruleBasedResumeAnalysis(text, targetRole) {
   const strengths = [];
   const improvements = [];
 
-  if (foundTech.length >= 4) strengths.push(`Strong technical keyword coverage (${foundTech.length} tech skills found)`);
+  if (foundTech.length >= 6) strengths.push(`Strong ${targetRole} keyword match (${foundTech.length}/${roleKws.length} role-specific skills found)`);
+  else if (foundTech.length >= 3) strengths.push(`Moderate ${targetRole} keyword coverage (${foundTech.length}/${roleKws.length} skills found — add more)`);
   if (hasLinkedIn && hasGitHub) strengths.push('Both LinkedIn and GitHub profiles included — great for ATS');
   if (hasMetrics)   strengths.push('Uses quantified metrics — highly valued by ATS and recruiters');
   if (hasProjects)  strengths.push('Projects section demonstrates practical experience');
@@ -103,7 +118,7 @@ function ruleBasedResumeAnalysis(text, targetRole) {
   if (!hasProjects) improvements.push('Add a "Projects" section with GitHub links or live URLs');
   if (!hasMetrics)  improvements.push('Quantify achievements: "Improved performance by 40%", "Served 10K+ users"');
   if (wordCount < 250) improvements.push('Resume is too brief. Aim for 400–700 words (1 page) or 700–1200 (2 pages)');
-  if (missingTech.length > 3) improvements.push(`Add missing keywords for ${targetRole}: ${missingTech.slice(0, 5).join(', ')}`);
+  if (missingTop.length >= 4) improvements.push(`Key ${targetRole} skills missing: ${missingTop.slice(0, 6).join(', ')}`);
 
   return {
     atsScore,
@@ -111,18 +126,18 @@ function ruleBasedResumeAnalysis(text, targetRole) {
       contact:      { score: contactScore, feedback: contactScore >= 8 ? 'Excellent contact section.' : 'Add LinkedIn and GitHub for better ATS scores.' },
       summary:      { score: summaryScore, feedback: hasSummary ? 'Professional summary found — keep it under 4 lines.' : 'Missing summary/objective. Add one detailing your role, years of experience, and key strength.' },
       experience:   { score: expScore,     feedback: hasExp ? (wordCount > 300 ? 'Strong experience section with good detail.' : 'Experience found but seems brief — add bullet points with impact.') : 'No experience section found — add even internships or volunteer work.' },
-      skills:       { score: skillsScore,  feedback: `Found ${foundTech.length} technical keywords. ${foundTech.length < 5 ? 'Add more relevant tech skills.' : 'Good keyword coverage.'}` },
+      skills:       { score: skillsScore,  feedback: `Found ${foundTech.length}/${roleKws.length} ${targetRole} keywords. ${keywordMatchRatio < 0.4 ? `Missing role-critical skills: ${missingTop.slice(0, 4).join(', ')}.` : 'Good keyword coverage for this role.'}` },
       education:    { score: eduScore,     feedback: hasEdu ? 'Education section found.' : 'Add your education details (degree, institution, year).' },
       achievements: { score: achievScore,  feedback: hasAchiev ? (hasMetrics ? 'Excellent — achievements with numbers!' : 'Add numbers to your achievements for impact.') : 'No achievements found. Add awards, certifications, or ranked projects.' },
     },
     keywords: {
       found:   foundTech,
-      missing: missingTech,
+      missing: missingTop,
       soft:    foundSoft,
     },
     strengths,
     improvements,
-    summary: `ATS Score: ${atsScore}/100. ${atsScore >= 75 ? 'Strong resume — ready to pass most ATS filters.' : atsScore >= 55 ? 'Decent resume with room to improve. Focus on keywords and metrics.' : 'Needs significant improvement to pass ATS filters. Add keywords, metrics, and missing sections.'}`,
+    summary: `ATS Score: ${atsScore}/100 for ${targetRole}. ${atsScore >= 75 ? 'Strong resume — ready to pass most ATS filters.' : atsScore >= 55 ? 'Decent resume with room to improve. Focus on role-specific keywords and metrics.' : 'Needs significant improvement. Add role-specific keywords, quantified metrics, and missing sections.'}`,
     wordCount,
     pagesEstimate: Math.ceil(wordCount / 350),
   };
@@ -131,30 +146,39 @@ function ruleBasedResumeAnalysis(text, targetRole) {
 /* ── AI-based ATS analysis ────────────────────────────────────────── */
 
 async function aiResumeAnalysis(text, targetRole, apiKey) {
-  const prompt = `You are an expert ATS resume analyzer and career coach. Analyze this resume for the role: "${targetRole}".
+  // Build role-specific required keywords hint for the AI
+  const roleKws = ROLE_KEYWORDS[targetRole] || ROLE_KEYWORDS['Software Engineer'];
+  const roleHint = roleKws.slice(0, 12).join(', ');
+
+  const prompt = `You are an expert ATS resume analyzer and career coach. Analyze this resume strictly for the role: "${targetRole}".
+
+CRITICAL: The ATS score must reflect how well this resume matches a "${targetRole}" role specifically.
+Key skills required for ${targetRole}: ${roleHint}
+Score the resume based on: how many of these role-specific skills are present, quality of experience, and overall ATS compatibility.
+Two different resumes for different roles should get different scores.
 
 RESUME (truncated to 4000 chars):
 ${text.slice(0, 4000)}
 
 Respond ONLY with raw JSON — no markdown fences, no extra text:
 {
-  "atsScore": <0-100 integer>,
+  "atsScore": <0-100 integer reflecting match for ${targetRole} specifically>,
   "sections": {
     "contact":      { "score": <0-10>, "feedback": "<specific feedback>" },
     "summary":      { "score": <0-10>, "feedback": "<specific feedback>" },
-    "experience":   { "score": <0-10>, "feedback": "<specific feedback>" },
-    "skills":       { "score": <0-10>, "feedback": "<specific feedback>" },
+    "experience":   { "score": <0-10>, "feedback": "<specific feedback for ${targetRole}>" },
+    "skills":       { "score": <0-10>, "feedback": "<mention specific ${targetRole} skills found and missing>" },
     "education":    { "score": <0-10>, "feedback": "<specific feedback>" },
     "achievements": { "score": <0-10>, "feedback": "<specific feedback>" }
   },
   "keywords": {
-    "found":   ["<tech_keyword>"],
-    "missing": ["<important_missing_keyword>"],
-    "soft":    ["<soft_skill>"]
+    "found":   ["<${targetRole}-relevant keyword found in resume>"],
+    "missing": ["<important ${targetRole} keyword missing from resume>"],
+    "soft":    ["<soft skill found>"]
   },
-  "strengths":    ["<strength_1>", "<strength_2>", "<strength_3>"],
-  "improvements": ["<improvement_1>", "<improvement_2>", "<improvement_3>", "<improvement_4>"],
-  "summary": "<2–3 sentence honest, specific assessment of the resume>"
+  "strengths":    ["<strength specific to ${targetRole} role>", "<strength_2>", "<strength_3>"],
+  "improvements": ["<improvement specific to ${targetRole} role>", "<improvement_2>", "<improvement_3>", "<improvement_4>"],
+  "summary": "<2–3 sentence honest, role-specific assessment mentioning ${targetRole} fit explicitly>"
 }`;
 
   const response = await axios.post(
