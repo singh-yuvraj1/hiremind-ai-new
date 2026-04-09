@@ -1,0 +1,231 @@
+﻿```js
+const axios = require('axios');
+const InterviewSession = require('../models/InterviewSession');
+const User = require('../models/User');
+
+/* ════════════════════════════════════════════════════════════════════
+   QUESTION BANK
+   ════════════════════════════════════════════════════════════════════ */
+
+const QB = {
+  hr: {
+    easy: ["Tell me about yourself.", "Why do you want this job?"],
+    medium: ["What is your biggest weakness?", "Where do you see yourself in 5 years?"],
+    hard: ["Tell me about a failure and what you learned."]
+  },
+
+  frontend: {
+    easy: ["What is HTML, CSS, JS?"],
+    medium: ["Explain Virtual DOM"],
+    hard: ["How would you architect a React app?"]
+  },
+
+  backend: {
+    easy: ["What is REST API?"],
+    medium: ["Explain Node.js event loop"],
+    hard: ["Design scalable API"]
+  },
+
+  fullstack: {
+    easy: ["What is MERN stack?"],
+    medium: ["Explain authentication flow"],
+    hard: ["Design SaaS architecture"]
+  },
+
+  dsa: {
+    easy: ["What is Big O?"],
+    medium: ["Explain BFS vs DFS"],
+    hard: ["Explain Dijkstra"]
+  },
+
+  amazon: {
+    easy: [
+      "Tell me about customer obsession."
+    ],
+    medium: [
+      "Tell me about data-driven decision."
+    ],
+    hard: [
+      "Design Amazon recommendation system",
+      "Design scalable checkout system"
+    ]
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   PICK QUESTIONS
+   ════════════════════════════════════════════════════════════════════ */
+
+const pickQuestions = (role, difficulty, count) => {
+  const pool = QB[role]?.[difficulty] || [];
+  return pool.sort(() => 0.5 - Math.random()).slice(0, count);
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   RULE BASED EVALUATION
+   ════════════════════════════════════════════════════════════════════ */
+
+const ruleBasedEval = (qaList, postureData) => {
+
+  const TECH_KEYWORDS = [
+    'javascript','react','node','api','database',
+    'algorithm','sql','nosql','docker','kubernetes'
+  ];
+
+  const perQ = qaList.map(({ answer }) => {
+    const ans = (answer || '').trim();
+    const wc = ans.split(/\s+/).length;
+    const aLow = ans.toLowerCase();
+
+    if (wc < 4) return { score: 5, feedback: 'No answer provided.' };
+
+    const techHits = TECH_KEYWORDS.filter(k => aLow.includes(k)).length;
+
+    if (wc < 15) return { score: 20, feedback: 'Too short.' };
+    if (wc < 40) return { score: 40, feedback: 'Needs more depth.' };
+    if (wc < 80) return { score: 55 + techHits * 3, feedback: 'Good answer.' };
+    if (wc < 130) return { score: 70 + techHits * 2, feedback: 'Strong answer.' };
+
+    return { score: 85, feedback: 'Excellent answer.' };
+  });
+
+  const avg = perQ.reduce((a, b) => a + b.score, 0) / perQ.length;
+
+  return {
+    communication: Math.round(avg),
+    confidence: postureData?.confidence || 60,
+    answerQuality: Math.round(avg),
+    posture: Math.round(
+      ((postureData?.posture ?? 60) + (postureData?.eyeContact ?? 55)) / 2
+    ),
+    overallScore: Math.round(avg),
+    strengths: ['Good attempt'],
+    suggestions: ['Add more structured answers'],
+    aiEvaluated: false,
+    perQuestionFeedback: perQ.map(p => p.feedback),
+    summary: `Score: ${Math.round(avg)}/100`
+  };
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   AI EVALUATION (WITH FALLBACK)
+   ════════════════════════════════════════════════════════════════════ */
+
+const evaluateWithAI = async (qaList, jobRole, postureData) => {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    return ruleBasedEval(qaList, postureData);
+  }
+
+  try {
+    const prompt = `
+Evaluate interview answers strictly.
+
+${qaList.map((q, i) => `Q${i+1}: ${q.question}\nA: ${q.answer}`).join('\n\n')}
+
+Return JSON only.
+`;
+
+    const res = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'mistralai/mistral-7b-instruct:free',
+        messages: [{ role: 'user', content: prompt }]
+      },
+      {
+        headers: { Authorization: `Bearer ${apiKey}` }
+      }
+    );
+
+    const raw = res.data.choices?.[0]?.message?.content;
+    const parsed = JSON.parse(raw);
+
+    return { ...parsed, aiEvaluated: true };
+
+  } catch (err) {
+    console.log("AI failed → fallback");
+    return ruleBasedEval(qaList, postureData);
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   CONTROLLERS
+   ════════════════════════════════════════════════════════════════════ */
+
+const getInterviewQuestions = async (req, res) => {
+  try {
+    const { role = 'backend', difficulty = 'medium', count = 5 } = req.query;
+
+    const questions = pickQuestions(role, difficulty, parseInt(count));
+
+    res.json({ success: true, questions });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const saveInterviewSession = async (req, res) => {
+  try {
+    const {
+      jobRole,
+      difficulty,
+      questions,
+      answers,
+      postureData
+    } = req.body;
+
+    const qaList = questions.map((q, i) => ({
+      question: q,
+      answer: answers?.[i] || ''
+    }));
+
+    const evaluation = await evaluateWithAI(qaList, jobRole, postureData);
+
+    const session = await InterviewSession.create({
+      user: req.user._id,
+      jobRole,
+      difficulty,
+      questions: qaList,
+      feedback: evaluation
+    });
+
+    const user = await User.findById(req.user._id);
+
+    user.stats.totalInterviews += 1;
+    user.stats.avgScore = Math.round(
+      (user.stats.avgScore + evaluation.overallScore) / 2
+    );
+
+    await user.save();
+
+    res.status(201).json({ success: true, session });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getUserSessions = async (req, res) => {
+  const sessions = await InterviewSession.find({ user: req.user._id })
+    .sort({ createdAt: -1 });
+
+  res.json({ success: true, sessions });
+};
+
+const getSession = async (req, res) => {
+  const session = await InterviewSession.findById(req.params.id);
+
+  res.json({ success: true, session });
+};
+
+module.exports = {
+  getInterviewQuestions,
+  saveInterviewSession,
+  getUserSessions,
+  getSession
+};
+```
+
