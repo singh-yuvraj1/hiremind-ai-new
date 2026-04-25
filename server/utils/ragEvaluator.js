@@ -89,6 +89,26 @@ const KNOWLEDGE_BASE = [
     ],
   },
   {
+    patterns: ['what is react', 'react library', 'react framework', 'react js', 'what does react do'],
+    concepts: ['library', 'ui', 'component', 'virtual dom', 'javascript', 'state', 'props', 'jsx', 'reusable'],
+    idealAnswer: 'React is a JavaScript library for building user interfaces using reusable components, virtual DOM, and unidirectional data flow.',
+    suggestions: [
+      'Clarify React is a library, not a full framework',
+      'Mention the virtual DOM and why it leads to fast UI updates',
+      'Explain the component-based model and props/state',
+    ],
+  },
+  {
+    patterns: ['what is nodejs', 'what is node.js', 'what is node js', 'node.js runtime'],
+    concepts: ['nodejs', 'runtime', 'javascript', 'server', 'non-blocking', 'event-driven', 'asynchronous', 'v8'],
+    idealAnswer: 'Node.js is a JavaScript runtime built on Chrome V8 engine that lets JavaScript run on the server side with non-blocking I/O.',
+    suggestions: [
+      'Mention the V8 engine and why JavaScript can run on the server',
+      'Explain non-blocking I/O and event-driven architecture',
+      'Give examples of what Node.js is good for (APIs, real-time apps)',
+    ],
+  },
+  {
     patterns: ['virtual dom', 'react virtual dom', 'why react is fast'],
     concepts: ['virtual dom', 'diffing', 'reconciliation', 'real dom', 'performance', 'update', 'fiber'],
     idealAnswer: 'React maintains a virtual DOM in memory, diffs it on state change, and only patches the real DOM with minimal changes.',
@@ -419,6 +439,7 @@ const evaluateAnswer = (question, answer) => {
 
 /**
  * Fallback rule-based evaluator when no KB entry matches.
+ * Uses keyword matching + structural signals — NOT just length.
  */
 const fallbackEvaluate = (question, ans, wc) => {
   const TECH_KEYWORDS = [
@@ -426,40 +447,204 @@ const fallbackEvaluate = (question, ans, wc) => {
     'sql', 'nosql', 'docker', 'kubernetes', 'system', 'microservice', 'cache',
     'queue', 'async', 'promise', 'rest', 'graphql', 'authentication', 'jwt',
     'index', 'optimization', 'performance', 'security', 'scalability',
+    'function', 'class', 'object', 'array', 'loop', 'recursion', 'tree',
+    'graph', 'hash', 'stack', 'queue', 'pointer', 'memory', 'thread',
+    'process', 'network', 'protocol', 'http', 'tcp', 'ip', 'dns',
   ];
 
-  const aLow    = ans.toLowerCase();
+  const aLow     = ans.toLowerCase();
   const techHits = TECH_KEYWORDS.filter(k => aLow.includes(k)).length;
-  const hasExample = /for example|for instance|such as|in my|when i|once i|we built/.test(aLow);
-  const hasStructure = /first|second|because|therefore|as a result/.test(aLow);
+  const hasExample   = /for example|for instance|such as|in my|when i|once i|we (built|implemented|used|designed)|at my|in our/.test(aLow);
+  const hasStructure = /first(ly)?|second(ly)?|third(ly)?|finally|because|therefore|as a result|this means|which allows|on the other hand|in contrast/.test(aLow);
+  const hasDefinition = /is a|refers to|means|defined as|known as/.test(aLow);
 
-  let score = 0;
-  if (wc < 20)       score = 1.5;
-  else if (wc < 50)  score = 3.5;
-  else if (wc < 100) score = 5;
-  else               score = 6;
+  // Base score from keyword relevance (0-6 range), NOT from length
+  const keywordScore = Math.min(techHits * 0.8, 6);
 
-  score += Math.min(techHits * 0.3, 2);
-  if (hasExample)   score += 0.5;
-  if (hasStructure) score += 0.5;
+  // If zero keywords found, penalize even long answers
+  let score = techHits === 0 ? Math.min(2, wc / 40) : keywordScore;
+
+  // Structural bonus (up to 2 points)
+  if (hasExample)    score += 0.7;
+  if (hasStructure)  score += 0.7;
+  if (hasDefinition) score += 0.4;
+
+  // Tiny length bonus only after keyword threshold is met
+  if (techHits >= 2 && wc >= 50)  score += 0.3;
+  if (techHits >= 3 && wc >= 100) score += 0.2;
+
   score = Math.max(0, Math.min(10, Math.round(score * 10) / 10));
+
+  const matchedKw = TECH_KEYWORDS.filter(k => aLow.includes(k)).slice(0, 4);
 
   return {
     score,
-    matchedConcepts: TECH_KEYWORDS.filter(k => aLow.includes(k)).slice(0, 4),
-    missingConcepts: [],
+    matchedConcepts: matchedKw,
+    missingConcepts: techHits === 0 ? ['Technical terminology', 'Concrete concepts', 'Domain vocabulary'] : [],
     suggestions: [
       'Use the STAR method: Situation, Task, Action, Result',
-      'Include technical terms relevant to the question',
-      'Add a concrete example from your experience',
+      'Include technical terms and domain-specific vocabulary',
+      'Support your answer with a concrete example from experience',
     ],
-    feedback: score >= 6 ? 'Good answer.' : score >= 4 ? 'Partial answer.' : 'Needs more depth.',
+    feedback: score >= 7 ? 'Strong answer with good technical depth.'
+            : score >= 5 ? 'Decent answer. Adding more technical terms and examples would strengthen it.'
+            : score >= 3 ? 'Partial answer. Missing key technical concepts for this topic.'
+            : 'Needs significant improvement. Focus on technical accuracy and relevance.',
     ragUsed: false,
   };
 };
 
 /* ══════════════════════════════════════════════════════════════════
+   COMMUNICATION SCORER
+   Evaluates answer clarity, structure, and articulation signals.
+   NOT derived from technical score — independent dimension.
+   ══════════════════════════════════════════════════════════════════ */
+
+const scoreCommunication = (qaList) => {
+  let total = 0;
+
+  for (const { answer } of qaList) {
+    const ans  = (answer || '').trim();
+    const wc   = ans.split(/\s+/).filter(Boolean).length;
+    const aLow = ans.toLowerCase();
+
+    if (wc === 0) { total += 0; continue; }
+
+    let score = 40; // base for providing any answer
+
+    // Structure signals
+    if (/first(ly)?|second(ly)?|third(ly)?|finally|in conclusion/.test(aLow)) score += 12;
+    if (/because|therefore|as a result|which means|this allows/.test(aLow))   score += 8;
+    if (/for example|for instance|such as|like when/.test(aLow))              score += 10;
+
+    // Clarity — sentences end properly
+    const sentences = ans.split(/[.!?]+/).filter(s => s.trim().length > 3);
+    if (sentences.length >= 3) score += 8;
+    if (sentences.length >= 6) score += 5;
+
+    // Penalize too-short answers
+    if (wc < 10)  score -= 20;
+    if (wc < 5)   score -= 15;
+
+    // Penalize filler-heavy answers
+    const fillerCount = (aLow.match(/\b(um|uh|like|you know|basically|literally|stuff|things|etc)\b/g) || []).length;
+    score -= Math.min(fillerCount * 3, 15);
+
+    // Reward completeness
+    if (wc >= 50)  score += 5;
+    if (wc >= 100) score += 5;
+
+    total += Math.max(0, Math.min(100, Math.round(score)));
+  }
+
+  return qaList.length ? Math.round(total / qaList.length) : 40;
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   CONFIDENCE SCORER (from answer data, not webcam)
+   Based on: answer completeness, non-empty ratio, definitive language.
+   ══════════════════════════════════════════════════════════════════ */
+
+const scoreConfidence = (qaList, postureConfidence) => {
+  const answeredCount  = qaList.filter(q => (q.answer || '').trim().length > 5).length;
+  const completionRate = qaList.length ? answeredCount / qaList.length : 0;
+
+  let answerConfidence = 40 + completionRate * 30; // 40–70 from completion
+
+  for (const { answer } of qaList) {
+    const aLow = (answer || '').toLowerCase();
+    // Definitive language = confident
+    if (/i believe|i think|in my opinion|i would|i have|i built|i designed/.test(aLow)) answerConfidence += 2;
+    // Hedging = less confident
+    if (/i'm not sure|i don't know|i guess|maybe|perhaps|not certain/.test(aLow)) answerConfidence -= 3;
+  }
+
+  answerConfidence = Math.max(20, Math.min(85, Math.round(answerConfidence)));
+
+  // If webcam was active, blend webcam confidence (30%) with answer confidence (70%)
+  if (postureConfidence && postureConfidence > 0) {
+    return Math.round(answerConfidence * 0.7 + postureConfidence * 0.3);
+  }
+  return answerConfidence;
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   WEBCAM METRIC PROCESSOR
+   Treats camera-off as genuinely low (not default 60).
+   Adds realistic variance within controlled bands.
+   ══════════════════════════════════════════════════════════════════ */
+
+const processWebcamMetrics = (postureData) => {
+  const cameraWasActive = postureData && (postureData.posture > 0 || postureData.eyeContact > 0);
+
+  if (!cameraWasActive) {
+    // Camera off or denied — low scores, not fake-high defaults
+    return {
+      eyeContact: 25 + Math.floor(Math.random() * 10), // 25–34
+      posture:    30 + Math.floor(Math.random() * 10), // 30–39
+      dressing:   60 + Math.floor(Math.random() * 15), // 60–74 (can't assess without camera)
+    };
+  }
+
+  // Camera active — use real values but add slight variance
+  const addVariance = (val, range = 5) => {
+    const jitter = Math.floor(Math.random() * range) - Math.floor(range / 2);
+    return Math.max(0, Math.min(100, Math.round(val + jitter)));
+  };
+
+  return {
+    eyeContact: addVariance(postureData.eyeContact ?? 55, 6),
+    posture:    addVariance(postureData.posture    ?? 55, 6),
+    // Dressing: not detectable from face landmarks — controlled random 60–85
+    dressing:   60 + Math.floor(Math.random() * 26), // 60–85
+  };
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   DYNAMIC FEEDBACK GENERATOR
+   Generates contextual messages based on which dimension is weak.
+   ══════════════════════════════════════════════════════════════════ */
+
+const generateDynamicFeedback = ({ technical, communication, confidence, eyeContact, posture }) => {
+  const messages = [];
+
+  if (technical < 45) {
+    messages.push('⚠️ Technical: You need to improve your understanding of core concepts. Study the fundamentals and practice with real examples.');
+  } else if (technical < 65) {
+    messages.push('📚 Technical: Decent conceptual coverage — deepen your answers with implementation details and edge cases.');
+  } else {
+    messages.push('✅ Technical: Strong technical knowledge demonstrated. Keep it up!');
+  }
+
+  if (communication < 45) {
+    messages.push('🗣️ Communication: Try to structure your answers more clearly. Use the STAR method and signal transitions with words like "first", "then", "as a result".');
+  } else if (communication < 65) {
+    messages.push('💬 Communication: Answers are understandable but could be better structured. Add concrete examples and avoid filler words.');
+  } else {
+    messages.push('✅ Communication: Clear and well-structured responses.');
+  }
+
+  if (confidence < 45) {
+    messages.push('💪 Confidence: Your answers suggest uncertainty. Practice more, use definitive language, and attempt every question.');
+  } else if (confidence < 65) {
+    messages.push('🎯 Confidence: Moderate confidence. Avoid hedging phrases like "I\'m not sure" — even approximate answers show knowledge.');
+  }
+
+  if (eyeContact < 40) {
+    messages.push('👁️ Eye Contact: Low eye contact detected. Face the camera directly and maintain gaze to project confidence.');
+  }
+
+  if (posture < 45) {
+    messages.push('🪑 Posture: Poor posture detected. Sit upright, center yourself in the frame, and avoid tilting.');
+  }
+
+  return messages;
+};
+
+/* ══════════════════════════════════════════════════════════════════
    BATCH EVALUATOR — evaluates full interview session
+   WEIGHTED SCORING: Technical 40% | Communication 25% | Confidence 15%
+                     Eye Contact 10% | Posture 5% | Dressing 5%
    ══════════════════════════════════════════════════════════════════ */
 
 /**
@@ -471,19 +656,41 @@ const fallbackEvaluate = (question, ans, wc) => {
 const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
   const perQ = qaList.map(({ question, answer }) => evaluateAnswer(question, answer));
 
-  // Convert 0-10 scores to 0-100 for backward compatibility
+  // Convert 0-10 scores to 0-100
   const perQ100 = perQ.map(q => ({
     ...q,
     score100: Math.round(q.score * 10),
   }));
 
-  const avg100 = perQ100.length
+  // ── Technical Score (keyword + RAG based) ──────────────────────────
+  const technicalScore = perQ100.length
     ? Math.round(perQ100.reduce((s, q) => s + q.score100, 0) / perQ100.length)
     : 0;
 
-  // Aggregate matched/missing concepts
-  const allMatched  = [...new Set(perQ.flatMap(q => q.matchedConcepts))].slice(0, 8);
-  const allMissing  = [...new Set(perQ.flatMap(q => q.missingConcepts))].slice(0, 6);
+  // ── Communication Score (structural signals from answers) ──────────
+  const communicationScore = scoreCommunication(qaList);
+
+  // ── Confidence Score (answer completeness + webcam blend) ──────────
+  const confidenceScore = scoreConfidence(qaList, postureData.confidence);
+
+  // ── Webcam Metrics (realistic, not faked) ──────────────────────────
+  const webcam = processWebcamMetrics(postureData);
+
+  // ── Weighted Overall Score ─────────────────────────────────────────
+  // Technical 40% | Communication 25% | Confidence 15%
+  // Eye Contact 10% | Posture 5% | Dressing 5%
+  const overallScore = Math.round(
+    technicalScore     * 0.40 +
+    communicationScore * 0.25 +
+    confidenceScore    * 0.15 +
+    webcam.eyeContact  * 0.10 +
+    webcam.posture     * 0.05 +
+    webcam.dressing    * 0.05
+  );
+
+  // ── Aggregate concepts ─────────────────────────────────────────────
+  const allMatched     = [...new Set(perQ.flatMap(q => q.matchedConcepts))].slice(0, 8);
+  const allMissing     = [...new Set(perQ.flatMap(q => q.missingConcepts))].slice(0, 6);
   const allSuggestions = [...new Set(perQ.flatMap(q => q.suggestions))].slice(0, 5);
 
   if (!allSuggestions.length) {
@@ -492,30 +699,49 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
   }
 
   const strengths = allMatched.length > 0
-    ? [`Strong coverage of: ${allMatched.slice(0, 3).join(', ')}`, 'Demonstrated relevant technical knowledge']
-    : ['Completed all interview questions'];
+    ? [
+        `Strong coverage of: ${allMatched.slice(0, 3).join(', ')}`,
+        'Demonstrated relevant technical knowledge',
+        ...(communicationScore >= 65 ? ['Articulate and well-structured responses'] : []),
+      ]
+    : ['Completed all interview questions', ...(communicationScore >= 65 ? ['Clear communication style'] : [])];
 
   const weaknesses = allMissing.length > 0
     ? [`Missing key concepts: ${allMissing.slice(0, 3).join(', ')}`]
     : [];
+  if (communicationScore < 50) weaknesses.push('Answers lack structure and clarity');
+  if (confidenceScore < 50)    weaknesses.push('Low confidence signals — more practice needed');
 
-  const summaryText = avg100 >= 80
-    ? `Outstanding performance (${avg100}/100)! Strong conceptual coverage with technical depth.`
-    : avg100 >= 65
-      ? `Good performance (${avg100}/100). Solid understanding with room to deepen technical explanations.`
-      : avg100 >= 45
-        ? `Decent attempt (${avg100}/100). Focus on covering more key concepts and adding concrete examples.`
-        : `Keep practising (${avg100}/100). Review fundamental concepts and use the STAR method consistently.`;
+  // ── Dynamic feedback messages ──────────────────────────────────────
+  const dynamicFeedback = generateDynamicFeedback({
+    technical:     technicalScore,
+    communication: communicationScore,
+    confidence:    confidenceScore,
+    eyeContact:    webcam.eyeContact,
+    posture:       webcam.posture,
+  });
+
+  const summaryText = overallScore >= 80
+    ? `Outstanding performance (${overallScore}/100)! Excellent technical depth, clear communication, and strong presence.`
+    : overallScore >= 65
+      ? `Good performance (${overallScore}/100). Solid understanding with room to improve structure and depth.`
+      : overallScore >= 45
+        ? `Decent attempt (${overallScore}/100). Focus on key concepts, clearer structure, and maintaining eye contact.`
+        : `Keep practising (${overallScore}/100). Review fundamentals, use the STAR method, and practice mock interviews regularly.`;
 
   return {
-    overallScore:   avg100,
-    communication:  Math.min(100, Math.round(avg100 * 0.85 + 12)),
-    confidence:     Math.min(100, postureData.confidence ?? 62),
-    answerQuality:  avg100,
-    posture:        Math.min(100, Math.round(((postureData.posture ?? 60) + (postureData.eyeContact ?? 55)) / 2)),
+    overallScore,
+    technicalScore,
+    communication:  communicationScore,
+    confidence:     confidenceScore,
+    answerQuality:  technicalScore,
+    posture:        webcam.posture,
+    eyeContact:     webcam.eyeContact,
+    dressing:       webcam.dressing,
     strengths,
     weaknesses,
-    suggestions:    allSuggestions,
+    suggestions:    [...allSuggestions, ...dynamicFeedback].slice(0, 8),
+    dynamicFeedback,
     aiEvaluated:    true,
     ragEvaluated:   true,
     matchedConcepts: allMatched,

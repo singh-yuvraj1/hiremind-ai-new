@@ -95,10 +95,34 @@ body {
 /* ── Utility classes ────────────────────────────────────────────── */
 .t-bg    { background-color: var(--bg); color: var(--text); }
 .t-bg2   { background-color: var(--bg2); }
-.t-card  { background: var(--card); border: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.t-card  {
+  background: var(--card);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
 .t-text  { color: var(--text); }
 .t-muted { color: var(--muted); }
 .t-accent { color: var(--accent); }
+
+/* ── Premium glassmorphism card ─────────────────────────────────── */
+.glass-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.2),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+}
+.glass-card:hover {
+  border-color: rgba(0,229,255,0.22);
+  box-shadow:
+    0 8px 40px rgba(0,229,255,0.08),
+    0 4px 24px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
 
 .grad-text {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 50%, var(--accent3) 100%);
@@ -114,6 +138,15 @@ body {
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border);
+  transition: backdrop-filter 0.3s, box-shadow 0.3s, border-color 0.3s;
+}
+
+.glass-nav-scrolled {
+  background: var(--nav-bg);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-bottom: 1px solid rgba(0,229,255,0.18);
+  box-shadow: 0 4px 32px rgba(0,0,0,0.4);
 }
 
 .input-box {
@@ -125,33 +158,77 @@ body {
   width: 100%;
   font-size: 0.875rem;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.25s, box-shadow 0.25s;
   font-family: 'DM Sans', sans-serif;
 }
 .input-box::placeholder { color: var(--muted); opacity: 0.7; }
-.input-box:focus { border-color: var(--accent); }
+.input-box:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,229,255,0.10);
+}
 
+/* ── Primary Button with glow ───────────────────────────────────── */
 .btn-primary {
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   color: white;
   border-radius: 0.75rem;
   font-weight: 600;
-  transition: opacity 0.2s, transform 0.15s;
+  transition: opacity 0.2s, transform 0.15s, box-shadow 0.25s;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
 }
-.btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.btn-primary:hover {
+  opacity: 0.92;
+  transform: translateY(-2px);
+  box-shadow: 0 0 24px rgba(0,229,255,0.35), 0 8px 24px rgba(0,0,0,0.3);
+}
+.btn-primary:hover::after { opacity: 1; }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── Glow Button wrapper ────────────────────────────────────────── */
+.glow-btn {
+  position: relative;
+  display: inline-block;
+  border-radius: 0.75rem;
+}
+.glow-btn::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent3));
+  opacity: 0;
+  filter: blur(10px);
+  transition: opacity 0.35s;
+  z-index: -1;
+}
+.glow-btn:hover::before { opacity: 0.55; }
 
 .btn-outline {
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 0.75rem;
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
   cursor: pointer;
   background: transparent;
 }
-.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 12px rgba(0,229,255,0.12);
+}
 
+/* ── Background grid ────────────────────────────────────────────── */
 .bg-grid {
   background-image:
     linear-gradient(rgba(128,128,128,0.04) 1px, transparent 1px),
@@ -159,12 +236,43 @@ body {
   background-size: 48px 48px;
 }
 
-/* scrollbar */
+/* ── Skeleton loader shimmer ────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(128,128,128,0.06) 25%,
+    rgba(128,128,128,0.14) 50%,
+    rgba(128,128,128,0.06) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius: 0.625rem;
+}
+
+/* ── Floating blob ──────────────────────────────────────────────── */
+.floating-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* ── 3D tilt helpers ────────────────────────────────────────────── */
+.tilt-wrap {
+  perspective: 900px;
+}
+.tilt-inner {
+  transition: transform 0.18s ease-out, box-shadow 0.25s;
+  will-change: transform;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* range input */
+/* ── Range input ────────────────────────────────────────────────── */
 input[type="range"] {
   -webkit-appearance: none;
   height: 4px;
@@ -181,6 +289,9 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   KEYFRAMES
+════════════════════════════════════════════════════════════════ */
 @keyframes gradMove {
   0%, 100% { background-position: 0% 50%; }
   50%       { background-position: 100% 50%; }
@@ -191,12 +302,46 @@ input[type="range"]::-webkit-slider-thumb {
   50%       { transform: translateY(-12px); }
 }
 
+@keyframes floatAlt {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  33%       { transform: translateY(-8px) translateX(6px); }
+  66%       { transform: translateY(4px) translateX(-4px); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(0,229,255,0.20); }
+  50%       { box-shadow: 0 0 32px rgba(0,229,255,0.50), 0 0 60px rgba(41,121,255,0.20); }
+}
+
+@keyframes aurora {
+  0%   { transform: translate(0,0) scale(1) rotate(0deg); }
+  33%  { transform: translate(30px,-20px) scale(1.08) rotate(5deg); }
+  66%  { transform: translate(-20px,15px) scale(0.94) rotate(-3deg); }
+  100% { transform: translate(0,0) scale(1) rotate(0deg); }
+}
+
+@keyframes blob-drift {
+  0%, 100% { transform: translate(0,0) scale(1); }
+  25%  { transform: translate(18px,-12px) scale(1.04); }
+  50%  { transform: translate(-10px,20px) scale(0.96); }
+  75%  { transform: translate(12px,8px) scale(1.02); }
+}
+
 @keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.8; }
+  0%   { transform: scale(1); opacity: 0.8; }
   100% { transform: scale(1.6); opacity: 0; }
 }
 
-.float { animation: float 5s ease-in-out infinite; }
+/* ── Animation utilities ────────────────────────────────────────── */
+.float     { animation: float 5s ease-in-out infinite; }
+.float-alt { animation: floatAlt 7s ease-in-out infinite; }
+.pulse-glow { animation: glow-pulse 2.5s ease-in-out infinite; }
+
 .pulse-ring::after {
   content: '';
   position: absolute;
@@ -204,4 +349,13 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   border: 2px solid var(--accent);
   animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

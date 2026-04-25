@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: [true, 'Name is required'], trim: true },
@@ -11,6 +12,10 @@ const userSchema = new mongoose.Schema({
   avatar:       { type: String, default: '' },
   googleId:     { type: String, default: null },
   authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
+
+  // ── Password Reset ────────────────────────────────────────────────
+  resetPasswordToken:  { type: String },
+  resetPasswordExpire: { type: Date },
 
   // ── Premium / Subscription ────────────────────────────────────────
   isPremium:    { type: Boolean, default: false },
@@ -78,6 +83,14 @@ userSchema.methods.resetDailyUsageIfNeeded = async function () {
     this.dailyUsage.lastResetDate = today;
     await this.save();
   }
+};
+
+// ── Generate and hash password reset token ────────────────────────────
+userSchema.methods.getResetPasswordToken = function() {
+  const resetToken = crypto.randomBytes(20).toString('hex');
+  this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+  this.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+  return resetToken;
 };
 
 module.exports = mongoose.model('User', userSchema);

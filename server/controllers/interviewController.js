@@ -260,11 +260,15 @@ const evaluateWithAI = async (qaList, jobRole, postureData = {}) => {
 
     const parsed = JSON.parse(match[0]);
 
-    // Merge real posture data
-    parsed.posture    = Math.round(((postureData?.posture ?? 60) + (postureData?.eyeContact ?? 55)) / 2);
-    parsed.confidence = postureData?.confidence ?? parsed.confidence ?? 65;
-    parsed.aiEvaluated = true;
+    // Merge realistic webcam data from RAG processor
+    parsed.posture    = ragResult.posture    ?? Math.round((postureData?.posture ?? 30) * 0.8);
+    parsed.eyeContact = ragResult.eyeContact ?? Math.round((postureData?.eyeContact ?? 30) * 0.8);
+    parsed.dressing   = ragResult.dressing   ?? 65;
+    parsed.confidence = ragResult.confidence ?? parsed.confidence ?? 55;
+    parsed.aiEvaluated  = true;
     parsed.ragEvaluated = false;
+    parsed.technicalScore   = parsed.answerQuality ?? parsed.overallScore ?? 0;
+    parsed.dynamicFeedback  = ragResult.dynamicFeedback ?? [];
 
     // Merge RAG concept data into per-question feedback
     if (Array.isArray(parsed.perQuestionFeedback) && Array.isArray(ragResult.perQuestionFeedback)) {
@@ -398,18 +402,23 @@ const saveInterviewSession = async (req, res) => {
       aiCharacter,
       questions:  qaList,
       feedback: {
-        communication:  evaluation.communication  ?? 60,
-        confidence:     evaluation.confidence     ?? 60,
-        answerQuality:  evaluation.answerQuality  ?? 60,
-        posture:        evaluation.posture        ?? 60,
-        overallScore:   evaluation.overallScore   ?? 60,
-        suggestions:    evaluation.suggestions    ?? [],
-        strengths:      evaluation.strengths      ?? [],
-        summary:        evaluation.summary        ?? '',
-        aiEvaluated:    evaluation.aiEvaluated    ?? false,
-        ragEvaluated:   evaluation.ragEvaluated   ?? false,
-        matchedConcepts: evaluation.matchedConcepts ?? [],
-        missingConcepts: evaluation.missingConcepts ?? [],
+        communication:    evaluation.communication    ?? 50,
+        confidence:       evaluation.confidence       ?? 50,
+        answerQuality:    evaluation.answerQuality    ?? 50,
+        posture:          evaluation.posture          ?? 35,
+        eyeContact:       evaluation.eyeContact       ?? 30,
+        dressing:         evaluation.dressing         ?? 65,
+        technicalScore:   evaluation.technicalScore   ?? evaluation.answerQuality ?? 50,
+        overallScore:     evaluation.overallScore     ?? 50,
+        suggestions:      evaluation.suggestions      ?? [],
+        strengths:        evaluation.strengths        ?? [],
+        weaknesses:       evaluation.weaknesses       ?? [],
+        dynamicFeedback:  evaluation.dynamicFeedback  ?? [],
+        summary:          evaluation.summary          ?? '',
+        aiEvaluated:      evaluation.aiEvaluated      ?? false,
+        ragEvaluated:     evaluation.ragEvaluated      ?? false,
+        matchedConcepts:  evaluation.matchedConcepts  ?? [],
+        missingConcepts:  evaluation.missingConcepts  ?? [],
       },
       duration,
       tabSwitches,

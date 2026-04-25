@@ -1,8 +1,10 @@
 const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
+const { ensurePremiumOverride } = require('./premiumMiddleware');
 
 /**
- * Hard auth guard — rejects requests without a valid token.
+ * Hard auth guard — rejects requests without a valid JWT.
+ * Also applies permanent premium override for privileged emails.
  */
 const protect = async (req, res, next) => {
   try {
@@ -22,6 +24,9 @@ const protect = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'User not found' });
     }
+
+    // Guarantee premium override emails always have isPremium=true
+    await ensurePremiumOverride(req.user);
 
     next();
   } catch (err) {
@@ -44,7 +49,10 @@ const optionalProtect = async (req, res, next) => {
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user    = await User.findById(decoded.id).select('-password');
-      if (user) req.user = user;
+      if (user) {
+        await ensurePremiumOverride(user);
+        req.user = user;
+      }
     }
   } catch {
     // Silently ignore invalid/expired tokens in optional mode

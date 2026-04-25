@@ -39,22 +39,34 @@ export default function Navbar({ onMenuClick }) {
 
   const isActive = (path) => location.pathname === path;
 
+  const navLinks = user
+    ? [
+        { label: 'Dashboard', to: '/dashboard' },
+        { label: 'Interview',  to: '/interview'  },
+        { label: 'Mock Tests', to: '/mock-test'  },
+        { label: 'Jobs',       to: '/jobs'       },
+        { label: 'Resume AI',  to: '/resume-analyzer' },
+      ]
+    : [];
+
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 glass-nav"
-      style={{ boxShadow: scrolled ? '0 4px 30px rgba(0,0,0,0.3)' : 'none' }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'glass-nav-scrolled' : 'glass-nav'}`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
 
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+        <Link to="/" className="flex items-center gap-2 flex-shrink-0 group">
+          <motion.div
+            whileHover={{ rotate: 15, scale: 1.1 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
             style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M8 1L15 5V11L8 15L1 11V5L8 1Z" stroke="white" strokeWidth="1.5" fill="none"/>
               <circle cx="8" cy="8" r="2.5" fill="white"/>
             </svg>
-          </div>
+          </motion.div>
           <span className="font-display font-bold text-base sm:text-lg t-text">
             Hire<span className="grad-text">Mind</span> AI
           </span>
@@ -63,33 +75,38 @@ export default function Navbar({ onMenuClick }) {
         {/* Desktop links */}
         <div className="hidden md:flex items-center gap-7">
           {user ? (
-            <>
-              {[
-                { label: 'Dashboard', to: '/dashboard' },
-                { label: 'Interview',  to: '/interview'  },
-                { label: 'Mock Tests', to: '/mock-test'  },
-                { label: 'Jobs',       to: '/jobs'       },
-                { label: 'Resume AI',  to: '/resume-analyzer' },
-              ].map(link => (
-                <Link key={link.to} to={link.to}
-                  className="text-sm font-medium transition-colors"
+            <div className="relative flex items-center gap-7">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="relative text-sm font-medium transition-colors pb-0.5"
                   style={{ color: isActive(link.to) ? 'var(--accent)' : 'var(--muted)' }}>
                   {link.label}
+                  {/* Animated underline indicator */}
+                  {isActive(link.to) && (
+                    <motion.div
+                      layoutId="nav-active-line"
+                      className="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full"
+                      style={{ background: 'var(--accent)' }}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
                 </Link>
               ))}
-            </>
+            </div>
           ) : (
             <>
               {/* these are buttons not links - they scroll on home page */}
               <button
                 onClick={() => scrollToSection('features')}
-                className="text-sm font-medium transition-colors"
+                className="text-sm font-medium transition-colors hover:text-[var(--accent)]"
                 style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 Features
               </button>
               <button
                 onClick={() => scrollToSection('howitworks')}
-                className="text-sm font-medium transition-colors"
+                className="text-sm font-medium transition-colors hover:text-[var(--accent)]"
                 style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
                 How It Works
               </button>
@@ -102,33 +119,43 @@ export default function Navbar({ onMenuClick }) {
           <ThemeToggle />
           {user ? (
             <div className="flex items-center gap-3">
-              <Link to="/profile" className="flex items-center gap-2">
-                {user.avatar
-                  ? <img src={user.avatar} alt={user.name}
-                      className="w-8 h-8 rounded-full border"
-                      style={{ borderColor: 'var(--border)' }} />
-                  : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                      style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }}>
-                      {user.name?.[0]?.toUpperCase()}
-                    </div>
-                }
+              <Link to="/profile" className="flex items-center gap-2 group">
+                <motion.div whileHover={{ scale: 1.08 }} transition={{ type: 'spring', stiffness: 400, damping: 20 }}>
+                  {user.avatar
+                    ? <img src={user.avatar} alt={user.name}
+                        className="w-8 h-8 rounded-full border"
+                        style={{ borderColor: 'var(--border)' }} />
+                    : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                        style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }}>
+                        {user.name?.[0]?.toUpperCase()}
+                      </div>
+                  }
+                </motion.div>
                 <span className="text-sm t-muted">{user.name?.split(' ')[0]}</span>
               </Link>
-              <button onClick={handleLogout}
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleLogout}
                 className="text-sm px-4 py-2 rounded-xl btn-outline">
                 Sign Out
-              </button>
+              </motion.button>
             </div>
           ) : (
             <>
               <Link to="/login"
-                className="text-sm t-muted hover:t-text transition-colors px-3 py-2">
+                className="text-sm t-muted hover:text-[var(--accent)] transition-colors px-3 py-2">
                 Sign In
               </Link>
-              <Link to="/signup"
-                className="text-sm px-5 py-2.5 rounded-xl text-white btn-primary">
-                Get Started
-              </Link>
+              <motion.div
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                className="glow-btn">
+                <Link to="/signup"
+                  className="text-sm px-5 py-2.5 rounded-xl text-white btn-primary inline-block">
+                  Get Started
+                </Link>
+              </motion.div>
             </>
           )}
         </div>
@@ -148,9 +175,9 @@ export default function Navbar({ onMenuClick }) {
             onClick={() => setMenuOpen(!menuOpen)}
             className="p-2 rounded-lg t-muted">
             <div className="w-5 space-y-1.5">
-              <span className={`block h-0.5 bg-current transition-all ${menuOpen ? 'rotate-45 translate-y-2' : ''}`}/>
-              <span className={`block h-0.5 bg-current transition-all ${menuOpen ? 'opacity-0' : ''}`}/>
-              <span className={`block h-0.5 bg-current transition-all ${menuOpen ? '-rotate-45 -translate-y-2' : ''}`}/>
+              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? 'rotate-45 translate-y-2' : ''}`}/>
+              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? 'opacity-0' : ''}`}/>
+              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-2' : ''}`}/>
             </div>
           </button>
         </div>
@@ -163,7 +190,8 @@ export default function Navbar({ onMenuClick }) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden px-5 py-4 space-y-3"
+            transition={{ duration: 0.28, ease: 'easeInOut' }}
+            className="md:hidden px-5 py-4 space-y-3 overflow-hidden"
             style={{ background: 'var(--nav-bg)', borderTop: '1px solid var(--border)' }}
           >
             {user ? (
@@ -174,12 +202,20 @@ export default function Navbar({ onMenuClick }) {
                   { label: 'Mock Tests', to: '/mock-test'  },
                   { label: 'History',    to: '/history'    },
                   { label: 'Profile',    to: '/profile'    },
-                ].map(link => (
-                  <Link key={link.to} to={link.to}
-                    className="block py-2 text-sm t-muted"
-                    onClick={() => setMenuOpen(false)}>
-                    {link.label}
-                  </Link>
+                ].map((link, i) => (
+                  <motion.div
+                    key={link.to}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.04 }}>
+                    <Link
+                      to={link.to}
+                      className="block py-2 text-sm font-medium transition-colors"
+                      style={{ color: isActive(link.to) ? 'var(--accent)' : 'var(--muted)' }}
+                      onClick={() => setMenuOpen(false)}>
+                      {link.label}
+                    </Link>
+                  </motion.div>
                 ))}
                 <button onClick={handleLogout}
                   className="block text-red-400 py-2 text-sm w-full text-left">
@@ -188,14 +224,12 @@ export default function Navbar({ onMenuClick }) {
               </>
             ) : (
               <>
-                <button
-                  onClick={() => scrollToSection('features')}
+                <button onClick={() => scrollToSection('features')}
                   className="block py-2 text-sm t-muted w-full text-left"
                   style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                   Features
                 </button>
-                <button
-                  onClick={() => scrollToSection('howitworks')}
+                <button onClick={() => scrollToSection('howitworks')}
                   className="block py-2 text-sm t-muted w-full text-left"
                   style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                   How It Works

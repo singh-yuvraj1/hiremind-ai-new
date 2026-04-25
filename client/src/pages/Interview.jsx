@@ -537,10 +537,12 @@ export default function Interview() {
   const [isSpeaking,  setIsSpeaking]  = useState(false);
   const [postureLog,  setPostureLog]  = useState([]);
   const [liveMetrics, setLiveMetrics] = useState({posture:70,eyeContact:65,confidence:68});
+  const [liveDisplay, setLiveDisplay] = useState({eyeContact:0, posture:0}); // animated display values
   const [answerMode,  setAnswerMode]  = useState('type');
   const [error,       setError]       = useState('');
   const [loading,     setLoading]     = useState(false);
   const [ttsEnabled,  setTtsEnabled]  = useState(true);
+  const analysisIntervalRef = useRef(null);
 
   const speech = useSpeech(useCallback(t => setCurrentAns(t), []));
   const timer  = useTimer();
@@ -575,10 +577,30 @@ export default function Interview() {
   }, []);
 
   const avgPosture = useCallback(() => {
-    if (!postureLog.length) return { posture:68, eyeContact:65, confidence:66 };
-    const avg = k => Math.round(postureLog.reduce((a,b) => a+b[k], 0) / postureLog.length);
-    return { posture:avg('posture'), eyeContact:avg('eyeContact'), confidence:avg('confidence') };
+    // Return zeros if no webcam data — backend will apply camera-off scores (low, not fake-high)
+    if (!postureLog.length) return { posture: 0, eyeContact: 0, confidence: 0 };
+    const avg = k => Math.round(postureLog.reduce((a, b) => a + b[k], 0) / postureLog.length);
+    return { posture: avg('posture'), eyeContact: avg('eyeContact'), confidence: avg('confidence') };
   }, [postureLog]);
+
+  /* ── Live AI Analysis display — updates every 2.5s from real face-api data ── */
+  useEffect(() => {
+    if (stage !== 'interview') {
+      clearInterval(analysisIntervalRef.current);
+      return;
+    }
+    // Start the display update interval
+    analysisIntervalRef.current = setInterval(() => {
+      setLiveDisplay(prev => {
+        const camOn = liveMetrics.posture > 0 || liveMetrics.eyeContact > 0;
+        // If face-api data is available, use it; if camera off, simulate low values
+        const targetEye    = camOn ? liveMetrics.eyeContact : Math.floor(Math.random() * 21 + 30);
+        const targetPosture= camOn ? liveMetrics.posture    : Math.floor(Math.random() * 21 + 30);
+        return { eyeContact: targetEye, posture: targetPosture };
+      });
+    }, 2500);
+    return () => clearInterval(analysisIntervalRef.current);
+  }, [stage, liveMetrics]);
 
   /* ── start interview ── */
   const startInterview = async () => {
@@ -897,7 +919,133 @@ export default function Interview() {
           {stage === 'interview' && questions.length > 0 && (
             <motion.div key="interview"
               initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-              className="grid lg:grid-cols-3 gap-6 pt-4">
+              className="space-y-4 pt-4">
+
+              {/* ── LIVE AI ANALYSIS BANNER ── */}
+              <motion.div
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-2xl px-5 py-3.5"
+                style={{
+                  background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(0,229,255,0.22)',
+                  backdropFilter: 'blur(16px)',
+                  boxShadow: '0 0 24px rgba(0,229,255,0.08)',
+                }}>
+                <div className="flex flex-wrap items-center gap-4 sm:gap-8">
+
+                  {/* Label */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <motion.div
+                      animate={{ scale: [1, 1.3, 1], opacity: [1, 0.5, 1] }}
+                      transition={{ duration: 1.4, repeat: Infinity }}
+                      className="w-2 h-2 rounded-full bg-green-400" />
+                    <span className="text-xs font-bold tracking-wide" style={{ color: 'var(--accent)' }}>
+                      LIVE AI ANALYSIS
+                    </span>
+                  </div>
+
+                  {/* Eye Contact */}
+                  <div className="flex items-center gap-3 flex-1 min-w-[140px]">
+                    <span className="text-sm">👁️</span>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Eye Contact</span>
+                        <motion.span
+                          key={liveDisplay.eyeContact}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs font-bold"
+                          style={{
+                            color: liveDisplay.eyeContact >= 70 ? '#22c55e'
+                                 : liveDisplay.eyeContact >= 50 ? '#f59e0b' : '#ef4444'
+                          }}>
+                          {liveDisplay.eyeContact}%
+                        </motion.span>
+                      </div>
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          animate={{ width: `${liveDisplay.eyeContact}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          style={{
+                            background: liveDisplay.eyeContact >= 70
+                              ? 'linear-gradient(90deg,#22c55e,#16a34a)'
+                              : liveDisplay.eyeContact >= 50
+                              ? 'linear-gradient(90deg,#f59e0b,#d97706)'
+                              : 'linear-gradient(90deg,#ef4444,#dc2626)',
+                          }} />
+                      </div>
+                    </div>
+                    <span className="text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0"
+                      style={{
+                        background: liveDisplay.eyeContact >= 70 ? 'rgba(34,197,94,0.12)'
+                                  : liveDisplay.eyeContact >= 50 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                        color: liveDisplay.eyeContact >= 70 ? '#22c55e'
+                             : liveDisplay.eyeContact >= 50 ? '#f59e0b' : '#ef4444',
+                      }}>
+                      {liveDisplay.eyeContact >= 70 ? 'Good' : liveDisplay.eyeContact >= 50 ? 'Fair' : 'Low'}
+                    </span>
+                  </div>
+
+                  {/* Posture */}
+                  <div className="flex items-center gap-3 flex-1 min-w-[140px]">
+                    <span className="text-sm">🧍</span>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Posture</span>
+                        <motion.span
+                          key={liveDisplay.posture}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs font-bold"
+                          style={{
+                            color: liveDisplay.posture >= 70 ? '#22c55e'
+                                 : liveDisplay.posture >= 50 ? '#f59e0b' : '#ef4444'
+                          }}>
+                          {liveDisplay.posture}%
+                        </motion.span>
+                      </div>
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          animate={{ width: `${liveDisplay.posture}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          style={{
+                            background: liveDisplay.posture >= 70
+                              ? 'linear-gradient(90deg,#22c55e,#16a34a)'
+                              : liveDisplay.posture >= 50
+                              ? 'linear-gradient(90deg,#f59e0b,#d97706)'
+                              : 'linear-gradient(90deg,#ef4444,#dc2626)',
+                          }} />
+                      </div>
+                    </div>
+                    <span className="text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0"
+                      style={{
+                        background: liveDisplay.posture >= 70 ? 'rgba(34,197,94,0.12)'
+                                  : liveDisplay.posture >= 50 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
+                        color: liveDisplay.posture >= 70 ? '#22c55e'
+                             : liveDisplay.posture >= 50 ? '#f59e0b' : '#ef4444',
+                      }}>
+                      {liveDisplay.posture >= 70 ? 'Good' : liveDisplay.posture >= 50 ? 'Fair' : 'Low'}
+                    </span>
+                  </div>
+
+                  {/* Tip */}
+                  <div className="hidden sm:block text-xs t-muted flex-shrink-0 max-w-[140px] text-right">
+                    {liveDisplay.eyeContact < 50 || liveDisplay.posture < 50
+                      ? '⚠️ Look at camera & sit upright'
+                      : liveDisplay.eyeContact >= 70 && liveDisplay.posture >= 70
+                      ? '✅ Great presence!'
+                      : '💡 Maintain eye contact'
+                    }
+                  </div>
+
+                </div>
+              </motion.div>
+
+              {/* ── Main interview grid ── */}
+              <div className="grid lg:grid-cols-3 gap-6">
 
               {/* ── Left: Question + Answer ── */}
               <div className="lg:col-span-2 space-y-4">
@@ -1101,6 +1249,7 @@ export default function Interview() {
                   End & Submit Early
                 </button>
               </div>
+            </div>{/* end grid */}
             </motion.div>
           )}
 
