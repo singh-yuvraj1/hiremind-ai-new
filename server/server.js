@@ -51,6 +51,7 @@ connectDB()
 /* ── CORS Configuration ───────────────────────────────────── */
 
 const defaultOrigins = [
+  'https://hiremind-aiy.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
@@ -98,9 +99,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
-/* ── Routes ───────────────────────────────────────────── */
-
-app.use('/api/auth',       require('./routes/authRoutes'));
+const authRoutes = require('./routes/authRoutes');
+app.use('/api/auth',       authRoutes);
+app.use('/auth',           authRoutes);
 app.use('/api/interviews', require('./routes/interviewRoutes'));
 app.use('/api/mock',       require('./routes/mockRoutes'));
 app.use('/api/jobs',       require('./routes/jobRoutes'));
