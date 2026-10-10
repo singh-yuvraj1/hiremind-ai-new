@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
+import UserAvatar from './UserAvatar';
 
 export default function Navbar({ onMenuClick }) {
   const [scrolled,  setScrolled]  = useState(false);
@@ -12,19 +13,21 @@ export default function Navbar({ onMenuClick }) {
   const location                  = useLocation();
 
   useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 15);
-    window.addEventListener('scroll', handler);
+    const handler = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handler, { passive: true });
     handler();
     return () => window.removeEventListener('scroll', handler);
   }, []);
 
+  // Close mobile menu on route change
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
+    setMenuOpen(false);
   };
 
-  // this function handles scrolling to sections on home page
-  // if user is on another page, it navigates to home first then scrolls
   const scrollToSection = (id) => {
     setMenuOpen(false);
     if (location.pathname !== '/') {
@@ -39,216 +42,238 @@ export default function Navbar({ onMenuClick }) {
 
   const isActive = (path) => location.pathname === path;
 
-  const navLinks = user
-    ? [
-        { label: 'Dashboard', to: '/dashboard' },
-        { label: 'Interview',  to: '/interview'  },
-        { label: 'Mock Tests', to: '/mock-test'  },
-        { label: 'Jobs',       to: '/jobs'       },
-        { label: 'Resume AI',  to: '/resume-analyzer' },
-      ]
-    : [];
+  const appLinks = [
+    { label: 'Dashboard',    to: '/dashboard' },
+    { label: 'Interview',    to: '/interview'  },
+    { label: 'Mock Tests',   to: '/mock-test'  },
+    { label: 'Jobs',         to: '/jobs'       },
+    { label: 'Resume AI',    to: '/resume-analyzer' },
+  ];
 
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'glass-nav-scrolled' : 'glass-nav'}`}
+    <header
+      className={`nav-bar t-bg${scrolled ? ' scrolled' : ''}`}
+      style={{ transition: 'box-shadow 0.3s ease, border-color 0.3s ease' }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+      <div className="max-w-[1200px] mx-auto h-full flex items-center justify-between px-5">
 
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 flex-shrink-0 group">
-          <motion.div
-            whileHover={{ rotate: 15, scale: 1.1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }}>
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 flex-shrink-0"
+          style={{ textDecoration: 'none' }}
+        >
+          <div
+            className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--accent)' }}
+          >
+            {/* Brain/target icon */}
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M8 1L15 5V11L8 15L1 11V5L8 1Z" stroke="white" strokeWidth="1.5" fill="none"/>
-              <circle cx="8" cy="8" r="2.5" fill="white"/>
+              <path d="M8 2C5.79 2 4 3.79 4 6c0 1.3.61 2.46 1.56 3.22L5 11h6l-.56-1.78C11.39 8.46 12 7.3 12 6c0-2.21-1.79-4-4-4z" fill="white" opacity="0.9"/>
+              <path d="M6 11h4v1.5a.5.5 0 01-1 0V13H7v-.5a.5.5 0 01-1 0V11z" fill="white" opacity="0.7"/>
+              <circle cx="8" cy="6" r="1.5" fill="white"/>
             </svg>
-          </motion.div>
-          <span className="font-display font-bold text-base sm:text-lg t-text">
-            Hire<span className="grad-text">Mind</span> AI
+          </div>
+          <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            HireMind<span style={{ color: 'var(--accent)' }}> AI</span>
           </span>
         </Link>
 
-        {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-7">
+        {/* Desktop center links */}
+        <nav className="hidden md:flex items-center gap-1">
           {user ? (
-            <div className="relative flex items-center gap-7">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className="relative text-sm font-medium transition-colors pb-0.5"
-                  style={{ color: isActive(link.to) ? 'var(--accent)' : 'var(--muted)' }}>
-                  {link.label}
-                  {/* Animated underline indicator */}
-                  {isActive(link.to) && (
-                    <motion.div
-                      layoutId="nav-active-line"
-                      className="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full"
-                      style={{ background: 'var(--accent)' }}
-                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                    />
-                  )}
-                </Link>
-              ))}
-            </div>
+            appLinks.map(link => (
+              <Link
+                key={link.to}
+                to={link.to}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                  fontWeight: isActive(link.to) ? 600 : 500,
+                  color: isActive(link.to) ? 'var(--accent)' : 'var(--muted)',
+                  background: isActive(link.to) ? 'var(--accent-bg)' : 'transparent',
+                  textDecoration: 'none',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive(link.to)) {
+                    e.target.style.color = 'var(--text-2)';
+                    e.target.style.background = 'var(--surface)';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!isActive(link.to)) {
+                    e.target.style.color = 'var(--muted)';
+                    e.target.style.background = 'transparent';
+                  }
+                }}
+              >
+                {link.label}
+              </Link>
+            ))
           ) : (
             <>
-              {/* these are buttons not links - they scroll on home page */}
               <button
                 onClick={() => scrollToSection('features')}
-                className="text-sm font-medium transition-colors hover:text-[var(--accent)]"
-                style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.15s ease' }}
+                onMouseEnter={e => e.target.style.color = 'var(--text-2)'}
+                onMouseLeave={e => e.target.style.color = 'var(--muted)'}
+              >
                 Features
               </button>
               <button
                 onClick={() => scrollToSection('howitworks')}
-                className="text-sm font-medium transition-colors hover:text-[var(--accent)]"
-                style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.15s ease' }}
+                onMouseEnter={e => e.target.style.color = 'var(--text-2)'}
+                onMouseLeave={e => e.target.style.color = 'var(--muted)'}
+              >
                 How It Works
               </button>
             </>
           )}
-        </div>
+        </nav>
 
-        {/* Desktop right side */}
-        <div className="hidden md:flex items-center gap-3">
+        {/* Desktop right */}
+        <div className="hidden md:flex items-center gap-2">
           <ThemeToggle />
+
           {user ? (
-            <div className="flex items-center gap-3">
-              <Link to="/profile" className="flex items-center gap-2 group">
-                <motion.div whileHover={{ scale: 1.08 }} transition={{ type: 'spring', stiffness: 400, damping: 20 }}>
-                  {user.avatar
-                    ? <img src={user.avatar} alt={user.name}
-                        className="w-8 h-8 rounded-full border"
-                        style={{ borderColor: 'var(--border)' }} />
-                    : <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                        style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))' }}>
-                        {user.name?.[0]?.toUpperCase()}
-                      </div>
-                  }
-                </motion.div>
-                <span className="text-sm t-muted">{user.name?.split(' ')[0]}</span>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/profile"
+                className="flex items-center gap-2 group"
+                style={{ textDecoration: 'none' }}
+              >
+                <UserAvatar
+                  user={user}
+                  size={34}
+                  borderColor="var(--border)"
+                  className="group-hover:ring-2 group-hover:ring-[var(--accent)] transition-all"
+                />
+                <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-2)' }}>
+                  {user.name?.split(' ')[0]}
+                </span>
               </Link>
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
+              <button
                 onClick={handleLogout}
-                className="text-sm px-4 py-2 rounded-xl btn-outline">
-                Sign Out
-              </motion.button>
+                className="btn-ghost"
+                style={{ padding: '6px 10px', fontSize: '0.8125rem' }}
+              >
+                Sign out
+              </button>
             </div>
           ) : (
-            <>
-              <Link to="/login"
-                className="text-sm t-muted hover:text-[var(--accent)] transition-colors px-3 py-2">
-                Sign In
+            <div className="flex items-center gap-2">
+              <Link
+                to="/login"
+                style={{ padding: '7px 14px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--muted)', textDecoration: 'none', transition: 'color 0.15s ease' }}
+                onMouseEnter={e => e.target.style.color = 'var(--text)'}
+                onMouseLeave={e => e.target.style.color = 'var(--muted)'}
+              >
+                Sign in
               </Link>
-              <motion.div
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                className="glow-btn">
-                <Link to="/signup"
-                  className="text-sm px-5 py-2.5 rounded-xl text-white btn-primary inline-block">
-                  Get Started
-                </Link>
-              </motion.div>
-            </>
+              <Link
+                to="/signup"
+                className="btn-primary"
+                style={{ padding: '7px 16px', textDecoration: 'none', display: 'inline-block' }}
+              >
+                Get started
+              </Link>
+            </div>
           )}
         </div>
 
         {/* Mobile right */}
-        <div className="md:hidden flex items-center gap-2">
+        <div className="md:hidden flex items-center gap-1">
           <ThemeToggle />
-          {/* Sidebar toggle (for dashboard pages) */}
+
+          {/* Sidebar toggle for authenticated pages */}
           {user && onMenuClick && (
-            <button onClick={onMenuClick} className="p-2 rounded-lg t-muted lg:hidden">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            <button
+              onClick={onMenuClick}
+              className="btn-ghost w-8 h-8 flex items-center justify-center rounded-md lg:hidden"
+              aria-label="Open navigation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 12h18M3 6h18M3 18h18"/>
               </svg>
             </button>
           )}
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 rounded-lg t-muted">
-            <div className="w-5 space-y-1.5">
-              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? 'rotate-45 translate-y-2' : ''}`}/>
-              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? 'opacity-0' : ''}`}/>
-              <span className={`block h-0.5 bg-current transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-2' : ''}`}/>
-            </div>
-          </button>
+
+          {/* Mobile hamburger for public pages */}
+          {!user && (
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="btn-ghost w-8 h-8 flex items-center justify-center rounded-md"
+              aria-label="Toggle menu"
+            >
+              {menuOpen ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M3 12h18M3 6h18M3 18h18"/>
+                </svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile dropdown menu (public only) */}
       <AnimatePresence>
-        {menuOpen && (
+        {menuOpen && !user && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.28, ease: 'easeInOut' }}
-            className="md:hidden px-5 py-4 space-y-3 overflow-hidden"
-            style={{ background: 'var(--nav-bg)', borderTop: '1px solid var(--border)' }}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="md:hidden"
+            style={{
+              background: 'var(--bg)',
+              borderTop: '1px solid var(--border)',
+              padding: '1rem 1.25rem',
+            }}
           >
-            {user ? (
-              <>
-                {[
-                  { label: 'Dashboard', to: '/dashboard' },
-                  { label: 'Interview',  to: '/interview'  },
-                  { label: 'Mock Tests', to: '/mock-test'  },
-                  { label: 'History',    to: '/history'    },
-                  { label: 'Profile',    to: '/profile'    },
-                ].map((link, i) => (
-                  <motion.div
-                    key={link.to}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.04 }}>
-                    <Link
-                      to={link.to}
-                      className="block py-2 text-sm font-medium transition-colors"
-                      style={{ color: isActive(link.to) ? 'var(--accent)' : 'var(--muted)' }}
-                      onClick={() => setMenuOpen(false)}>
-                      {link.label}
-                    </Link>
-                  </motion.div>
-                ))}
-                <button onClick={handleLogout}
-                  className="block text-red-400 py-2 text-sm w-full text-left">
-                  Sign Out
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => scrollToSection('features')}
-                  className="block py-2 text-sm t-muted w-full text-left"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                  Features
-                </button>
-                <button onClick={() => scrollToSection('howitworks')}
-                  className="block py-2 text-sm t-muted w-full text-left"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                  How It Works
-                </button>
-                <Link to="/login"
-                  className="block py-2 text-sm t-muted"
-                  onClick={() => setMenuOpen(false)}>
-                  Sign In
-                </Link>
-                <Link to="/signup"
-                  className="block text-center py-2.5 rounded-xl text-white btn-primary text-sm"
-                  onClick={() => setMenuOpen(false)}>
-                  Get Started
-                </Link>
-              </>
-            )}
+            <div className="space-y-1 mb-4">
+              <button
+                onClick={() => scrollToSection('features')}
+                className="block w-full text-left"
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                Features
+              </button>
+              <button
+                onClick={() => scrollToSection('howitworks')}
+                className="block w-full text-left"
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                How It Works
+              </button>
+            </div>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', gap: '8px' }}>
+              <Link
+                to="/login"
+                onClick={() => setMenuOpen(false)}
+                className="btn-outline flex-1 text-center"
+                style={{ padding: '8px 16px', textDecoration: 'none', display: 'block' }}
+              >
+                Sign in
+              </Link>
+              <Link
+                to="/signup"
+                onClick={() => setMenuOpen(false)}
+                className="btn-primary flex-1 text-center"
+                style={{ padding: '8px 16px', textDecoration: 'none', display: 'block' }}
+              >
+                Get started
+              </Link>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </nav>
+    </header>
   );
 }

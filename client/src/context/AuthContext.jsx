@@ -13,10 +13,17 @@ export function AuthProvider({ children }) {
     if (token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       api.get('/auth/me')
-        .then(res => setUser(res.data.user))
+        .then(res => {
+          if (res.data?.user) {
+            setUser(res.data.user);
+            localStorage.setItem('hm_user', JSON.stringify(res.data.user));
+          }
+        })
         .catch(() => {
           localStorage.removeItem('hm_token');
+          localStorage.removeItem('hm_user');
           delete api.defaults.headers.common['Authorization'];
+          setUser(null);
         })
         .finally(() => setLoading(false));
     } else {
@@ -26,30 +33,40 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    localStorage.setItem('hm_token', res.data.token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
-    setUser(res.data.user);
-    return res.data.user;
+    if (res.data?.token && res.data?.user) {
+      localStorage.setItem('hm_token', res.data.token);
+      localStorage.setItem('hm_user', JSON.stringify(res.data.user));
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      setUser(res.data.user);
+    }
+    return res.data?.user;
   };
 
   const register = async (name, email, password) => {
     const res = await api.post('/auth/register', { name, email, password });
-    localStorage.setItem('hm_token', res.data.token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
-    setUser(res.data.user);
-    return res.data.user;
+    if (res.data?.token && res.data?.user) {
+      localStorage.setItem('hm_token', res.data.token);
+      localStorage.setItem('hm_user', JSON.stringify(res.data.user));
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      setUser(res.data.user);
+    }
+    return res.data?.user;
   };
 
   const googleLogin = async (credential) => {
     const res = await api.post('/auth/google', { credential });
-    localStorage.setItem('hm_token', res.data.token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
-    setUser(res.data.user);
-    return res.data.user;
+    if (res.data?.token && res.data?.user) {
+      localStorage.setItem('hm_token', res.data.token);
+      localStorage.setItem('hm_user', JSON.stringify(res.data.user));
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      setUser(res.data.user);
+    }
+    return res.data?.user;
   };
 
   const logout = () => {
     localStorage.removeItem('hm_token');
+    localStorage.removeItem('hm_user');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
   };
@@ -58,7 +75,10 @@ export function AuthProvider({ children }) {
   const refreshUser = async () => {
     try {
       const res = await api.get('/auth/me');
-      setUser(res.data.user);
+      if (res.data?.user) {
+        setUser(res.data.user);
+        localStorage.setItem('hm_user', JSON.stringify(res.data.user));
+      }
     } catch (err) {
       console.error('refreshUser failed', err);
     }

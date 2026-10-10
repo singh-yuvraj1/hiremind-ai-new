@@ -1,53 +1,72 @@
-/**
- * PremiumLock.jsx — HireMind AI
- *
- * Wraps any content that requires a Premium subscription.
- * If isPremium is false, shows a blurred overlay with an upgrade prompt.
- *
- * Usage:
- *   <PremiumLock isPremium={user?.isPremium}>
- *     <DetailedAnalytics />
- *   </PremiumLock>
- *
- * IMPORTANT: this is UI-only — real gate is on the backend.
- */
-
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
+/**
+ * PremiumLock — wraps content that requires Premium subscription.
+ * Shows blurred overlay with clean upgrade prompt.
+ * IMPORTANT: real gate is on the backend — this is UI only.
+ */
 export default function PremiumLock({ isPremium, children, feature = 'This feature' }) {
   if (isPremium) return children;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
-      {/* Actual content — blurred */}
-      <div className="pointer-events-none select-none" style={{ filter: 'blur(6px)', opacity: 0.35 }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
+      {/* Blurred content */}
+      <div style={{ filter: 'blur(5px)', opacity: 0.3, pointerEvents: 'none', userSelect: 'none' }}>
         {children}
       </div>
 
-      {/* Lock overlay */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6"
-        style={{ background: 'rgba(10,18,40,0.72)', backdropFilter: 'blur(2px)' }}>
+      {/* Overlay */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          textAlign: 'center',
+          background: 'rgba(15,17,23,0.80)',
+          backdropFilter: 'blur(2px)',
+        }}
+      >
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.38 }}
-          className="max-w-xs">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-3"
-            style={{ background: 'linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,58,237,0.20))', border: '1px solid rgba(0,229,255,0.25)' }}>
-            🔒
-          </div>
-          <p className="font-display font-semibold t-text text-sm mb-1">Premium Feature</p>
-          <p className="text-xs t-muted mb-4">
-            {feature} is available on the Premium plan. Upgrade to unlock full access.
-          </p>
-          <Link to="/profile"
-            className="inline-block px-5 py-2 text-xs font-bold rounded-xl text-white"
+          transition={{ duration: 0.3 }}
+          style={{ maxWidth: 280 }}
+        >
+          <div
             style={{
-              background: 'linear-gradient(135deg, #00e5ff, #2979ff)',
-              boxShadow: '0 0 18px rgba(0,229,255,0.30)',
-            }}>
-            Upgrade to Premium →
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: 'var(--surface2)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 12px',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 6px' }}>
+            Premium Feature
+          </p>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--muted)', margin: '0 0 16px', lineHeight: 1.5 }}>
+            {feature} is available on the Premium plan.
+          </p>
+          <Link
+            to="/profile"
+            className="btn-primary"
+            style={{ display: 'inline-block', padding: '7px 20px', textDecoration: 'none', fontSize: '0.8125rem' }}
+          >
+            Upgrade to Premium
           </Link>
         </motion.div>
       </div>

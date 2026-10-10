@@ -5,8 +5,12 @@ const crypto = require('crypto');
 const userSchema = new mongoose.Schema({
   name: { type: String, required: [true, 'Name is required'], trim: true },
   email: {
-    type: String, required: [true, 'Email is required'],
-    unique: true, lowercase: true, trim: true,
+    type: String,
+    required: [true, 'Email is required'],
+    unique: true,
+    lowercase: true,
+    trim: true,
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
   },
   password:     { type: String, minlength: 6, select: false },
   avatar:       { type: String, default: '' },
@@ -42,7 +46,6 @@ const userSchema = new mongoose.Schema({
     totalMockTests:    { type: Number, default: 0 },
     avgScore:          { type: Number, default: 0 },
     avgCommunication:  { type: Number, default: 0 },
-    avgConfidence:     { type: Number, default: 0 },
     avgAnswerQuality:  { type: Number, default: 0 },
     avgPosture:        { type: Number, default: 0 },
     bestScore:         { type: Number, default: 0 },
@@ -70,6 +73,7 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.methods.comparePassword = async function (candidate) {
+  if (!this.password) return false;
   return bcrypt.compare(candidate, this.password);
 };
 

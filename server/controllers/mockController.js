@@ -1,4 +1,5 @@
 const MockTest = require('../models/MockTest');
+const Question = require('../models/Question');
 
 const questionBanks = {
   aptitude: [
@@ -80,9 +81,50 @@ const pickRandom = (type, count = 10) => {
 
 const getMockQuestions = async (req, res) => {
   try {
-    const { type = 'aptitude', count = 10 } = req.query;
-    const questions = pickRandom(type, parseInt(count));
-    res.json({ success: true, questions });
+    const { type = 'aptitude', count = 10, difficulty } = req.query;
+    const targetCount = parseInt(count, 10) || 10;
+
+    // 1. Attempt to fetch MCQs from MongoDB Question model
+    let dbQuestions = [];
+    try {
+      const query = { type: 'mcq', isActive: true };
+      if (type === 'aptitude') {
+        query.fieldId = 'aptitude_and_placements';
+      } else if (type === 'dsa') {
+        query.fieldId = 'dsa_and_coding';
+      } else if (type === 'programming') {
+        query.fieldId = 'software_development';
+      } else if (type === 'behavioral') {
+        query.fieldId = 'hr_and_behavioral';
+      }
+      if (difficulty && ['easy', 'medium', 'hard'].includes(difficulty)) {
+        query.difficulty = difficulty;
+      }
+
+      const results = await Question.find(query).limit(targetCount * 2).lean();
+      if (results && results.length > 0) {
+        dbQuestions = results
+          .filter(r => Array.isArray(r.options) && r.options.length > 0 && typeof r.correctOptionIndex === 'number')
+          .map(r => ({
+            question: r.question,
+            options:  r.options,
+            correct:  r.correctOptionIndex,
+            explanation: r.explanation || '',
+          }));
+      }
+    } catch (err) {
+      console.warn('[getMockQuestions] MongoDB lookup fallback:', err.message);
+    }
+
+    let finalQuestions = [...dbQuestions].sort(() => Math.random() - 0.5).slice(0, targetCount);
+
+    // 2. Fill from fallback bank if needed
+    if (finalQuestions.length < targetCount) {
+      const fallback = pickRandom(type, targetCount - finalQuestions.length);
+      finalQuestions = [...finalQuestions, ...fallback];
+    }
+
+    res.json({ success: true, questions: finalQuestions });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

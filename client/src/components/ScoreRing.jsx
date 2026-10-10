@@ -1,46 +1,73 @@
-// circular score ring with animated fill
-export default function ScoreRing({ score = 0, label = '', size = 110, color = null }) {
-  const r    = (size - 14) / 2;
-  const circ = 2 * Math.PI * r;
-  const fill = circ - (score / 100) * circ;
+import { useEffect, useRef, useState } from 'react';
 
-  // auto color based on score
+/** Clean circular score ring — no glow filter, subtle animation */
+export default function ScoreRing({ score = 0, label = '', size = 100, color = null }) {
+  const [displayScore, setDisplayScore] = useState(0);
+  const animRef = useRef(null);
+
+  const r    = (size - 12) / 2;
+  const circ = 2 * Math.PI * r;
+  const fill = circ - (displayScore / 100) * circ;
+
   const ringColor = color || (
-    score >= 75 ? '#22c55e' :
-    score >= 55 ? '#00e5ff' :
-    score >= 35 ? '#fb923c' : '#ef4444'
+    score >= 75 ? 'var(--success)' :
+    score >= 55 ? 'var(--accent)' :
+    score >= 35 ? 'var(--warning)' : 'var(--danger)'
   );
 
+  const textColor = color || (
+    score >= 75 ? '#22c55e' :
+    score >= 55 ? '#3b82f6' :
+    score >= 35 ? '#f59e0b' : '#ef4444'
+  );
+
+  // Animate score number
+  useEffect(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    const start = Date.now();
+    const duration = 1000;
+    const step = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayScore(Math.round(eased * score));
+      if (progress < 1) animRef.current = requestAnimationFrame(step);
+    };
+    animRef.current = requestAnimationFrame(step);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [score]);
+
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="-rotate-90">
-          {/* background track */}
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ position: 'relative', width: size, height: size }}>
+        <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+          {/* Track */}
           <circle
             cx={size / 2} cy={size / 2} r={r}
-            stroke="rgba(128,128,128,0.12)" strokeWidth="7" fill="none"
+            stroke="var(--surface2)" strokeWidth="7" fill="none"
           />
-          {/* filled arc */}
+          {/* Fill */}
           <circle
             cx={size / 2} cy={size / 2} r={r}
             stroke={ringColor} strokeWidth="7" fill="none"
             strokeDasharray={circ}
             strokeDashoffset={fill}
             strokeLinecap="round"
-            style={{
-              transition: 'stroke-dashoffset 1.4s ease',
-              filter: `drop-shadow(0 0 6px ${ringColor}70)`,
-            }}
+            style={{ transition: 'stroke-dashoffset 0.05s linear' }}
           />
         </svg>
-        {/* score number in middle */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-display font-bold" style={{ fontSize: size * 0.22, color: 'var(--text)' }}>
-            {score}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: size * 0.22, fontWeight: 700, color: textColor, letterSpacing: '-0.03em', lineHeight: 1 }}>
+            {displayScore}
           </span>
+          <span style={{ fontSize: size * 0.1, color: 'var(--muted)', fontWeight: 400 }}>/100</span>
         </div>
       </div>
-      <span className="text-xs t-muted text-center font-medium">{label}</span>
+      {label && (
+        <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 500, textAlign: 'center' }}>
+          {label}
+        </span>
+      )}
     </div>
   );
 }

@@ -1,30 +1,26 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
-// all available themes
 export const THEMES = [
-  { id: 'dark',      label: 'Cyber Dark',  emoji: '🌑' },
-  { id: 'neon',      label: 'Neon',        emoji: '🟣' },
-  { id: 'cyberpunk', label: 'Cyberpunk',   emoji: '⚡' },
-  { id: 'ocean',     label: 'Ocean',       emoji: '🌊' },
-  { id: 'glass',     label: 'Glass',       emoji: '🪟' },
-  { id: 'light',     label: 'Light',       emoji: '☀️' },
+  { id: 'dark',  label: 'Dark',  emoji: '🌙' },
+  { id: 'light', label: 'Light', emoji: '☀️' },
 ];
 
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('hm_theme') || 'dark';
+    const saved = localStorage.getItem('hm_theme');
+    // Migrate old neon/cyberpunk/glass/ocean themes to dark
+    if (!['dark','light'].includes(saved)) return 'dark';
+    return saved || 'dark';
   });
 
   useEffect(() => {
-    // remove all theme classes first
-    const classes = THEMES.map(t => `theme-${t.id}`);
-    document.documentElement.classList.remove(...classes);
+    // Remove any old theme classes
+    document.documentElement.classList.remove('theme-dark','theme-light','theme-neon','theme-cyberpunk','theme-ocean','theme-glass');
 
-    // add current theme class (default dark needs no class)
-    if (theme !== 'dark') {
-      document.documentElement.classList.add(`theme-${theme}`);
+    if (theme === 'light') {
+      document.documentElement.classList.add('theme-light');
     }
 
     localStorage.setItem('hm_theme', theme);

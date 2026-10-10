@@ -1,65 +1,28 @@
-import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ThemeToggle() {
-  const { theme, setTheme, currentTheme, THEMES } = useTheme();
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  // close when clicking outside
-  useEffect(() => {
-    const fn = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, []);
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-all btn-outline"
-        title="Change theme"
-      >
-        <span>{currentTheme.emoji}</span>
-        <svg className="w-3 h-3 t-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    <button
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      className="btn-ghost w-8 h-8 flex items-center justify-center rounded-md"
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {isDark ? (
+        /* Sun icon */
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
         </svg>
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.96 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-12 w-44 rounded-2xl shadow-2xl overflow-hidden z-50"
-            style={{ background: 'var(--bg2)', border: '1px solid var(--border)' }}
-          >
-            <div className="p-2">
-              <p className="text-xs px-2 py-1.5 t-muted font-medium">Pick Theme</p>
-              {THEMES.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => { setTheme(t.id); setOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-left"
-                  style={{
-                    background: theme === t.id ? 'rgba(128,128,128,0.15)' : 'transparent',
-                    color: 'var(--text)',
-                  }}
-                >
-                  <span className="text-base">{t.emoji}</span>
-                  <span className="text-sm">{t.label}</span>
-                  {theme === t.id && (
-                    <span className="ml-auto text-xs" style={{ color: 'var(--accent)' }}>✓</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+      ) : (
+        /* Moon icon */
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+      )}
+    </button>
   );
 }

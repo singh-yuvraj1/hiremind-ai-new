@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { authAPI, paymentAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import UserAvatar from '../components/UserAvatar';
+import AvatarSelector from '../components/AvatarSelector';
 
 /* ── Razorpay checkout helper ──────────────────────────────────── */
 const loadRazorpayScript = () => {
@@ -65,6 +68,7 @@ const openRazorpay = async (user, onSuccess, onError) => {
 
 /* ════════════════════════════════════════════════════════════════ */
 export default function Profile() {
+  const { refreshUser } = useAuth();
   const [userData,     setUserData]     = useState(null);
   const [payStatus,    setPayStatus]    = useState(null);
   const [usageData,    setUsageData]    = useState(null);
@@ -72,6 +76,10 @@ export default function Profile() {
   const [upgrading,    setUpgrading]    = useState(false);
   const [upgradeMsg,   setUpgradeMsg]   = useState('');
   const [upgradeError, setUpgradeError] = useState('');
+
+  const [savingAvatar,      setSavingAvatar]      = useState(false);
+  const [avatarSuccessMsg,  setAvatarSuccessMsg]  = useState('');
+  const [avatarErrorMsg,    setAvatarErrorMsg]    = useState('');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -93,6 +101,25 @@ export default function Profile() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const handleAvatarSelect = async (newAvatar) => {
+    setSavingAvatar(true);
+    setAvatarSuccessMsg('');
+    setAvatarErrorMsg('');
+    try {
+      const res = await authAPI.updateAvatar(newAvatar);
+      if (res.data?.user) {
+        setUserData(res.data.user);
+        await refreshUser();
+      }
+      setAvatarSuccessMsg('🎉 Avatar updated successfully!');
+      setTimeout(() => setAvatarSuccessMsg(''), 4000);
+    } catch (err) {
+      setAvatarErrorMsg(err.response?.data?.message || 'Failed to update avatar. Please try again.');
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
 
   const handleUpgrade = () => {
     if (upgrading) return;
@@ -142,22 +169,21 @@ export default function Profile() {
           <h1 className="font-display font-bold text-3xl t-text">
             My <span className="grad-text">Profile</span>
           </h1>
-          <p className="t-muted mt-1 text-sm">Manage your account and subscription</p>
+          <p className="t-muted mt-1 text-sm">Manage your account, avatar style, and subscription</p>
         </div>
 
         {/* ── User Info Card ── */}
         <div className="t-card rounded-2xl p-6 flex items-center gap-5"
           style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl flex-shrink-0"
-            style={{ background: 'rgba(0,229,255,0.1)', border: '2px solid var(--accent)' }}>
-            {userData?.avatar ? (
-              <img src={userData.avatar} alt="Avatar" className="w-full h-full rounded-2xl object-cover" />
-            ) : '👤'}
-          </div>
+          <UserAvatar
+            user={userData}
+            size={68}
+            borderColor="var(--accent)"
+          />
           <div className="flex-1 min-w-0">
             <p className="font-bold text-lg t-text truncate">{userData?.name || 'User'}</p>
             <p className="text-sm t-muted truncate">{userData?.email}</p>
-            <div className="flex items-center gap-2 mt-1.5">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               {isPremium ? (
                 <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold"
                   style={{ background: 'rgba(0,229,255,0.15)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
@@ -172,6 +198,57 @@ export default function Profile() {
               <span className="text-xs t-muted">via {userData?.authProvider === 'google' ? '🔵 Google' : '✉️ Email'}</span>
             </div>
           </div>
+        </div>
+
+        {/* ── Choose Your Avatar ── */}
+        <div className="t-card rounded-2xl p-6" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h2 className="font-semibold text-base t-text flex items-center gap-2">
+                <span>🎭</span> Choose Your Avatar
+              </h2>
+              <p className="text-xs t-muted mt-0.5">
+                Select your preferred male or female avatar style. It displays across the navbar, profile, and dashboard.
+              </p>
+            </div>
+            {savingAvatar && (
+              <span className="text-xs text-[var(--accent)] font-medium flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                Saving...
+              </span>
+            )}
+          </div>
+
+          <AnimatePresence>
+            {avatarSuccessMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mb-4 p-3 rounded-xl text-xs font-medium text-green-400"
+                style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}
+              >
+                {avatarSuccessMsg}
+              </motion.div>
+            )}
+            {avatarErrorMsg && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="mb-4 p-3 rounded-xl text-xs font-medium text-red-400"
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
+              >
+                ⚠️ {avatarErrorMsg}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AvatarSelector
+            selectedAvatar={userData?.avatar}
+            onSelect={handleAvatarSelect}
+            isSaving={savingAvatar}
+          />
         </div>
 
         {/* ── Daily Usage ── */}

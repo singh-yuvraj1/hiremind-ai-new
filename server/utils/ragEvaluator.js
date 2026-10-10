@@ -575,28 +575,26 @@ const scoreConfidence = (qaList, postureConfidence) => {
    ══════════════════════════════════════════════════════════════════ */
 
 const processWebcamMetrics = (postureData) => {
-  const cameraWasActive = postureData && (postureData.posture > 0 || postureData.eyeContact > 0);
+  const cameraWasActive = postureData && postureData.posture > 0;
 
   if (!cameraWasActive) {
-    // Camera off or denied — low scores, not fake-high defaults
+    // Camera off or denied — penalise posture; dressing gets a neutral default
     return {
-      eyeContact: 25 + Math.floor(Math.random() * 10), // 25–34
-      posture:    30 + Math.floor(Math.random() * 10), // 30–39
-      dressing:   60 + Math.floor(Math.random() * 15), // 60–74 (can't assess without camera)
+      posture:  30 + Math.floor(Math.random() * 10), // 30–39
+      dressing: 60 + Math.floor(Math.random() * 15), // 60–74
     };
   }
 
-  // Camera active — use real values but add slight variance
+  // Camera active — use real posture value with small smoothing jitter
   const addVariance = (val, range = 5) => {
     const jitter = Math.floor(Math.random() * range) - Math.floor(range / 2);
     return Math.max(0, Math.min(100, Math.round(val + jitter)));
   };
 
   return {
-    eyeContact: addVariance(postureData.eyeContact ?? 55, 6),
-    posture:    addVariance(postureData.posture    ?? 55, 6),
-    // Dressing: not detectable from face landmarks — controlled random 60–85
-    dressing:   60 + Math.floor(Math.random() * 26), // 60–85
+    posture:  addVariance(postureData.posture ?? 55, 4),
+    // Dressing: not assessable from pose landmarks — neutral controlled range
+    dressing: 60 + Math.floor(Math.random() * 26), // 60–85
   };
 };
 
@@ -605,7 +603,7 @@ const processWebcamMetrics = (postureData) => {
    Generates contextual messages based on which dimension is weak.
    ══════════════════════════════════════════════════════════════════ */
 
-const generateDynamicFeedback = ({ technical, communication, confidence, eyeContact, posture }) => {
+const generateDynamicFeedback = ({ technical, communication, posture }) => {
   const messages = [];
 
   if (technical < 45) {
@@ -624,18 +622,12 @@ const generateDynamicFeedback = ({ technical, communication, confidence, eyeCont
     messages.push('✅ Communication: Clear and well-structured responses.');
   }
 
-  if (confidence < 45) {
-    messages.push('💪 Confidence: Your answers suggest uncertainty. Practice more, use definitive language, and attempt every question.');
-  } else if (confidence < 65) {
-    messages.push('🎯 Confidence: Moderate confidence. Avoid hedging phrases like "I\'m not sure" — even approximate answers show knowledge.');
-  }
-
-  if (eyeContact < 40) {
-    messages.push('👁️ Eye Contact: Low eye contact detected. Face the camera directly and maintain gaze to project confidence.');
-  }
-
   if (posture < 45) {
-    messages.push('🪑 Posture: Poor posture detected. Sit upright, center yourself in the frame, and avoid tilting.');
+    messages.push('🪑 Posture: Poor body posture detected. Sit upright, keep your shoulders level and aligned, and avoid slouching or leaning forward.');
+  } else if (posture < 65) {
+    messages.push('🧍 Posture: Moderate posture detected. Try to sit straighter, keep your back supported, and centre yourself in the camera frame.');
+  } else {
+    messages.push('✅ Posture: Good upright posture maintained throughout the interview.');
   }
 
   return messages;
@@ -670,22 +662,16 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
   // ── Communication Score (structural signals from answers) ──────────
   const communicationScore = scoreCommunication(qaList);
 
-  // ── Confidence Score (answer completeness + webcam blend) ──────────
-  const confidenceScore = scoreConfidence(qaList, postureData.confidence);
-
-  // ── Webcam Metrics (realistic, not faked) ──────────────────────────
+  // ── Webcam Metrics (posture only — not faked) ──────────────────────
   const webcam = processWebcamMetrics(postureData);
 
   // ── Weighted Overall Score ─────────────────────────────────────────
-  // Technical 40% | Communication 25% | Confidence 15%
-  // Eye Contact 10% | Posture 5% | Dressing 5%
+  // Technical 50% | Communication 25% | Posture 15% | Dressing 10%
   const overallScore = Math.round(
-    technicalScore     * 0.40 +
+    technicalScore     * 0.50 +
     communicationScore * 0.25 +
-    confidenceScore    * 0.15 +
-    webcam.eyeContact  * 0.10 +
-    webcam.posture     * 0.05 +
-    webcam.dressing    * 0.05
+    webcam.posture     * 0.15 +
+    webcam.dressing    * 0.10
   );
 
   // ── Aggregate concepts ─────────────────────────────────────────────
@@ -710,33 +696,29 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
     ? [`Missing key concepts: ${allMissing.slice(0, 3).join(', ')}`]
     : [];
   if (communicationScore < 50) weaknesses.push('Answers lack structure and clarity');
-  if (confidenceScore < 50)    weaknesses.push('Low confidence signals — more practice needed');
+  if (webcam.posture < 50)    weaknesses.push('Body posture needs improvement — sit upright and keep shoulders aligned');
 
   // ── Dynamic feedback messages ──────────────────────────────────────
   const dynamicFeedback = generateDynamicFeedback({
     technical:     technicalScore,
     communication: communicationScore,
-    confidence:    confidenceScore,
-    eyeContact:    webcam.eyeContact,
     posture:       webcam.posture,
   });
 
   const summaryText = overallScore >= 80
-    ? `Outstanding performance (${overallScore}/100)! Excellent technical depth, clear communication, and strong presence.`
+    ? `Outstanding performance (${overallScore}/100)! Excellent technical depth, clear communication, and strong body posture.`
     : overallScore >= 65
-      ? `Good performance (${overallScore}/100). Solid understanding with room to improve structure and depth.`
+      ? `Good performance (${overallScore}/100). Solid understanding with room to improve answer structure and depth.`
       : overallScore >= 45
-        ? `Decent attempt (${overallScore}/100). Focus on key concepts, clearer structure, and maintaining eye contact.`
+        ? `Decent attempt (${overallScore}/100). Focus on key concepts, clearer answer structure, and sitting upright.`
         : `Keep practising (${overallScore}/100). Review fundamentals, use the STAR method, and practice mock interviews regularly.`;
 
   return {
     overallScore,
     technicalScore,
     communication:  communicationScore,
-    confidence:     confidenceScore,
     answerQuality:  technicalScore,
     posture:        webcam.posture,
-    eyeContact:     webcam.eyeContact,
     dressing:       webcam.dressing,
     strengths,
     weaknesses,

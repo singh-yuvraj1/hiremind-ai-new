@@ -7,8 +7,20 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Syne', 'sans-serif'],
-        body:    ['DM Sans', 'sans-serif'],
+        sans:    ['Inter', 'sans-serif'],
+        display: ['Inter', 'sans-serif'],
+        body:    ['Inter', 'sans-serif'],
+        mono:    ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      colors: {
+        brand: {
+          DEFAULT: '#2563eb',
+          light: '#3b82f6',
+          dark: '#1d4ed8',
+        },
+      },
+      borderRadius: {
+        DEFAULT: '6px',
       },
     },
   },

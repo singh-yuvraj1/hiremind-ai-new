@@ -1,21 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
+import {
+  RadarChart, PolarGrid, PolarAngleAxis, Radar,
+  ResponsiveContainer, Tooltip
+} from 'recharts';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ScoreRing from '../components/ScoreRing';
 import { interviewAPI } from '../services/api';
 
-// resources shown based on weak areas
 const resourceMap = {
   communication: [
     { title: 'Effective Communication — Coursera', url: 'https://coursera.org',  type: 'Free Course' },
     { title: 'How to Answer Interview Questions',  url: 'https://youtube.com',   type: 'YouTube' },
-  ],
-  confidence: [
-    { title: 'Body Language for Interviews',       url: 'https://youtube.com',   type: 'YouTube' },
-    { title: 'Overcoming Interview Anxiety',       url: '#',                     type: 'Article' },
   ],
   answerQuality: [
     { title: 'LeetCode Practice',                  url: 'https://leetcode.com',  type: 'Practice' },
@@ -25,10 +23,13 @@ const resourceMap = {
     { title: 'Body Language in Interviews',        url: '#',                     type: 'Article' },
     { title: 'Professional Presence Online',       url: '#',                     type: 'Guide' },
   ],
+  dressing: [
+    { title: 'Professional Dressing for Interviews', url: '#',                   type: 'Guide' },
+    { title: 'Interview Attire Tips',              url: '#',                     type: 'Article' },
+  ],
 };
 
-// color helper: green >=70, amber >=50, red <50
-const scoreColor = v => v >= 70 ? '#22c55e' : v >= 50 ? '#f59e0b' : '#ef4444';
+const scoreColor = v => v >= 70 ? '#22c55e' : v >= 50 ? '#3b82f6' : v >= 35 ? '#f59e0b' : '#ef4444';
 
 export default function Feedback() {
   const { id }               = useParams();
@@ -44,34 +45,35 @@ export default function Feedback() {
   }, [id]);
 
   if (loading) return (
-    <div className="min-h-screen t-bg flex items-center justify-center">
-      <div className="w-12 h-12 border-2 border-transparent rounded-full animate-spin"
-        style={{ borderTopColor: 'var(--accent)' }} />
+    <div className="min-h-screen t-bg" style={{ fontFamily: 'Inter, sans-serif' }}>
+      <Navbar />
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
+        <div style={{ width: 28, height: 28, border: '2px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+      </div>
     </div>
   );
 
   if (!session) return (
-    <div className="min-h-screen t-bg flex items-center justify-center text-center px-4">
-      <div>
-        <p className="t-muted mb-4">Session not found.</p>
-        <Link to="/dashboard" style={{ color: 'var(--accent)' }}>← Back to Dashboard</Link>
+    <div className="min-h-screen t-bg" style={{ fontFamily: 'Inter, sans-serif' }}>
+      <Navbar />
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', flexDirection: 'column', gap: 16 }}>
+        <p style={{ color: 'var(--muted)', fontSize: '0.9375rem' }}>Session not found.</p>
+        <Link to="/dashboard" className="btn-primary" style={{ padding: '8px 20px', textDecoration: 'none' }}>
+          Back to Dashboard
+        </Link>
       </div>
     </div>
   );
 
   const fb    = session.feedback;
   const score = fb.overallScore || 0;
-
   const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : score >= 35 ? 'D' : 'F';
-  const gradeColor = { A: '#22c55e', B: '#00e5ff', C: '#fb923c', D: '#f97316', F: '#ef4444' }[grade];
+  const gradeColor = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b', D: '#f97316', F: '#ef4444' }[grade];
 
-  // All score rings — 7 dimensions
   const rings = [
     { label: 'Overall',       val: score },
     { label: 'Technical',     val: fb.technicalScore || fb.answerQuality || 0 },
     { label: 'Communication', val: fb.communication  || 0 },
-    { label: 'Confidence',    val: fb.confidence     || 0 },
-    { label: 'Eye Contact',   val: fb.eyeContact     || 0 },
     { label: 'Posture',       val: fb.posture        || 0 },
     { label: 'Dressing',      val: fb.dressing       || 0 },
   ];
@@ -79,156 +81,167 @@ export default function Feedback() {
   const radarData = [
     { subject: 'Technical',     value: fb.technicalScore || fb.answerQuality || 0 },
     { subject: 'Communication', value: fb.communication  || 0 },
-    { subject: 'Confidence',    value: fb.confidence     || 0 },
-    { subject: 'Eye Contact',   value: fb.eyeContact     || 0 },
     { subject: 'Posture',       value: fb.posture        || 0 },
     { subject: 'Dressing',      value: fb.dressing       || 0 },
   ];
 
-  // figure out which areas need improvement
-  const weakAreas = ['communication', 'confidence', 'answerQuality', 'posture'].filter(
+  const weakAreas = ['communication', 'answerQuality', 'posture', 'dressing'].filter(
     a => (fb[a] || 0) < 60
   );
 
-  // per-question feedback from RAG evaluator
   const perQFeedback = fb.perQuestionFeedback || [];
-
   const fmtDate = new Date(session.createdAt).toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 
-  const TABS = ['overview', 'questions', 'ai-feedback', 'resources'];
+  const TABS = [
+    { id: 'overview',    label: 'Overview' },
+    { id: 'questions',   label: 'Questions' },
+    { id: 'ai-feedback', label: 'AI Feedback' },
+    { id: 'resources',   label: 'Resources' },
+  ];
 
   return (
-    <div className="min-h-screen t-bg flex flex-col" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="min-h-screen t-bg" style={{ fontFamily: 'Inter, sans-serif' }}>
       <Navbar />
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-5 pt-24 pb-16">
+      <main style={{ maxWidth: 1000, margin: '0 auto', padding: 'calc(var(--nav-h) + 2rem) 1.5rem 3rem' }}>
 
-        {/* header */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
-          <div>
-            <Link to="/dashboard" className="text-xs t-muted flex items-center gap-1 mb-3 hover:text-[var(--accent)] transition-colors">
-              ← Back to Dashboard
-            </Link>
-            <div className="flex items-center flex-wrap gap-3 mb-1">
-              <h1 className="font-display font-bold text-3xl t-text">Interview Feedback</h1>
-              {fb.aiEvaluated ? (
-                <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-                  style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  🤖 AI Evaluated
-                </span>
-              ) : (
-                <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-                  style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)' }}>
-                  📊 RAG Evaluated
-                </span>
-              )}
-            </div>
-            <p className="t-muted text-sm">{session.jobRole} · {fmtDate}</p>
-          </div>
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: '2rem' }}>
+          <Link to="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--muted)', textDecoration: 'none', marginBottom: '1rem', fontWeight: 500 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            Back to Dashboard
+          </Link>
 
-          {/* grade + score */}
-          <div className="flex items-center gap-4">
-            <div className="text-center">
-              <div className="font-display font-extrabold text-6xl" style={{ color: gradeColor }}>{grade}</div>
-              <div className="text-xs t-muted mt-1">Grade</div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.025em', margin: 0 }}>
+                  Interview Feedback
+                </h1>
+                {fb.aiEvaluated ? (
+                  <span className="badge badge-success">AI Evaluated</span>
+                ) : (
+                  <span className="badge badge-warning">RAG Evaluated</span>
+                )}
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'var(--muted)', margin: 0 }}>
+                {session.jobRole} · {fmtDate}
+              </p>
             </div>
-            <div className="t-card rounded-2xl p-4 text-center min-w-[100px]">
-              <div className="font-display font-bold text-3xl grad-text">{score}</div>
-              <div className="text-xs t-muted mt-1">/ 100</div>
+
+            {/* Grade + Score */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '3rem', fontWeight: 800, lineHeight: 1, color: gradeColor, letterSpacing: '-0.03em' }}>{grade}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 4 }}>Grade</div>
+              </div>
+              <div
+                className="card"
+                style={{ padding: '0.75rem 1.125rem', textAlign: 'center', minWidth: 90 }}
+              >
+                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1 }}>{score}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 4 }}>out of 100</div>
+              </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Score Weight Banner */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="mb-6 rounded-xl px-4 py-3 text-xs flex flex-wrap gap-3 items-center"
-          style={{ background: 'rgba(0,229,255,0.06)', border: '1px solid rgba(0,229,255,0.15)' }}>
-          <span className="t-muted font-medium">Score Weights:</span>
+        {/* Score weight banner */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}
+          className="alert alert-info"
+          style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}
+        >
+          <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>Score weights:</span>
           {[
-            ['Technical', '40%', '#00e5ff'],
+            ['Technical', '50%', '#3b82f6'],
             ['Communication', '25%', '#a855f7'],
-            ['Confidence', '15%', '#22c55e'],
-            ['Eye Contact', '10%', '#f59e0b'],
-            ['Posture', '5%', '#f97316'],
-            ['Dressing', '5%', '#ec4899'],
+            ['Posture', '15%', '#f97316'],
+            ['Dressing', '10%', '#ec4899'],
           ].map(([label, pct, col]) => (
-            <span key={label} className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full inline-block" style={{ background: col }} />
-              <span style={{ color: col }} className="font-medium">{label}</span>
-              <span className="t-muted">{pct}</span>
+            <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
+              <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>{label}</span>
+              <span style={{ color: 'var(--muted)' }}>{pct}</span>
             </span>
           ))}
         </motion.div>
 
-        {/* tabs */}
-        <div className="flex gap-1 mb-7 p-1 rounded-xl w-fit"
-          style={{ background: 'rgba(128,128,128,0.08)' }}>
+        {/* Tabs */}
+        <div className="tabs" style={{ marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className="px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all"
-              style={{
-                background: tab === t ? 'rgba(128,128,128,0.15)' : 'transparent',
-                color: tab === t ? 'var(--text)' : 'var(--muted)',
-                border: tab === t ? '1px solid var(--border)' : '1px solid transparent',
-              }}>
-              {t.replace('-', ' ')}
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`tab-item${tab === t.id ? ' active' : ''}`}
+            >
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* ── OVERVIEW TAB ── */}
+        {/* ── OVERVIEW ── */}
         {tab === 'overview' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-            {/* score rings — 7 dimensions */}
-            <div className="t-card rounded-2xl p-7">
-              <h2 className="font-display font-semibold t-text mb-7">Score Breakdown</h2>
-              <div className="flex flex-wrap gap-6 justify-around">
-                {rings.map(r => <ScoreRing key={r.label} score={r.val} label={r.label} size={100} />)}
+            {/* Score rings */}
+            <div className="card" style={{ padding: '1.75rem' }}>
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 1.75rem', letterSpacing: '-0.01em' }}>
+                Score Breakdown
+              </h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'space-around' }}>
+                {rings.map(r => <ScoreRing key={r.label} score={r.val} label={r.label} size={90} />)}
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-5">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }} className="md-grid">
 
-              {/* radar chart */}
-              <div className="t-card rounded-2xl p-6">
-                <h2 className="font-display font-semibold t-text mb-4">Skill Radar</h2>
-                <ResponsiveContainer width="100%" height={260}>
+              {/* Radar */}
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 1rem', letterSpacing: '-0.01em' }}>
+                  Skill Radar
+                </h2>
+                <ResponsiveContainer width="100%" height={240}>
                   <RadarChart data={radarData}>
-                    <PolarGrid stroke="rgba(128,128,128,0.1)" />
-                    <PolarAngleAxis dataKey="subject"
-                      tick={{ fill: 'var(--muted)', fontSize: 10 }} />
-                    <Radar name="Score" dataKey="value"
-                      stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.12} strokeWidth={2} />
+                    <PolarGrid stroke="var(--border)" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--muted)', fontSize: 11 }} />
+                    <Radar name="Score" dataKey="value" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.10} strokeWidth={2} />
                     <Tooltip
-                      contentStyle={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }}
+                      contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 12 }}
                       formatter={v => [`${v}/100`]}
                     />
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* summary + strengths + suggestions */}
-              <div className="t-card rounded-2xl p-6 space-y-5">
-                <div>
-                  <h2 className="font-display font-semibold t-text mb-3">AI Assessment</h2>
-                  <p className="text-sm t-muted leading-relaxed p-3 rounded-xl"
-                    style={{ background: 'rgba(128,128,128,0.05)', borderLeft: '2px solid var(--accent)' }}>
-                    {fb.summary || 'No summary available.'}
-                  </p>
-                </div>
+              {/* AI Assessment */}
+              <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.01em' }}>
+                  AI Assessment
+                </h2>
+                <p
+                  style={{
+                    fontSize: '0.875rem',
+                    color: 'var(--text-2)',
+                    lineHeight: 1.65,
+                    padding: '0.875rem',
+                    borderRadius: 8,
+                    background: 'var(--surface2)',
+                    borderLeft: '3px solid var(--accent)',
+                    margin: 0,
+                  }}
+                >
+                  {fb.summary || 'No summary available.'}
+                </p>
 
                 {fb.strengths?.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium t-text mb-2">✅ Strengths</h3>
-                    <ul className="space-y-1.5">
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--success)', margin: '0 0 8px' }}>Strengths</p>
+                    <ul style={{ margin: 0, paddingLeft: '1.125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {fb.strengths.map((s, i) => (
-                        <li key={i} className="flex gap-2 text-sm text-green-400">
-                          <span className="flex-shrink-0 mt-0.5">→</span> {s}
-                        </li>
+                        <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--text-2)', lineHeight: 1.5 }}>{s}</li>
                       ))}
                     </ul>
                   </div>
@@ -236,25 +249,10 @@ export default function Feedback() {
 
                 {fb.weaknesses?.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium t-text mb-2">⚠️ Weaknesses</h3>
-                    <ul className="space-y-1.5">
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--warning)', margin: '0 0 8px' }}>Areas to Improve</p>
+                    <ul style={{ margin: 0, paddingLeft: '1.125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {fb.weaknesses.map((s, i) => (
-                        <li key={i} className="flex gap-2 text-sm" style={{ color: '#f97316' }}>
-                          <span className="flex-shrink-0 mt-0.5">→</span> {s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {fb.suggestions?.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium t-text mb-2">📌 Improvements</h3>
-                    <ul className="space-y-1.5">
-                      {fb.suggestions.slice(0, 4).map((s, i) => (
-                        <li key={i} className="flex gap-2 text-sm t-muted">
-                          <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }}>→</span> {s}
-                        </li>
+                        <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--text-2)', lineHeight: 1.5 }}>{s}</li>
                       ))}
                     </ul>
                   </div>
@@ -262,80 +260,125 @@ export default function Feedback() {
               </div>
             </div>
 
-            {/* session meta */}
-            <div className="t-card rounded-2xl p-5">
-              <div className="grid grid-cols-3 gap-4 text-center">
+            {/* Session meta */}
+            <div className="card" style={{ padding: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                 {[
-                  { label: 'Questions', val: session.questions.length },
-                  { label: 'Duration',  val: `${Math.floor(session.duration / 60)}m ${session.duration % 60}s` },
-                  { label: 'Difficulty',val: session.difficulty },
+                  { label: 'Questions',  val: session.questions.length },
+                  { label: 'Duration',   val: `${Math.floor(session.duration / 60)}m ${session.duration % 60}s` },
+                  { label: 'Difficulty', val: session.difficulty },
                 ].map(m => (
-                  <div key={m.label}>
-                    <div className="font-display font-bold text-2xl t-text">{m.val}</div>
-                    <div className="text-xs t-muted mt-1 capitalize">{m.label}</div>
+                  <div key={m.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.03em', marginBottom: 4, textTransform: 'capitalize' }}>
+                      {m.val}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>{m.label}</div>
                   </div>
                 ))}
               </div>
             </div>
+
+            <style>{`
+              @media (max-width: 768px) { .md-grid { grid-template-columns: 1fr !important; } }
+            `}</style>
           </motion.div>
         )}
 
-        {/* ── QUESTIONS TAB ── */}
+        {/* ── QUESTIONS ── */}
         {tab === 'questions' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             {session.questions.map((q, i) => {
               const pqf    = perQFeedback[i];
               const qScore = pqf?.score ?? null;
-              const qColor = qScore !== null ? scoreColor(qScore) : '#6b7280';
+              const qColor = qScore !== null ? scoreColor(qScore) : 'var(--muted)';
               const qLabel = qScore !== null
                 ? (qScore >= 70 ? 'Strong' : qScore >= 50 ? 'Decent' : qScore >= 25 ? 'Weak' : 'Missed')
                 : 'Unscored';
 
               return (
-                <div key={i} className="t-card rounded-2xl p-5">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
-                      style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--accent)' }}>
+                <div key={i} className="card" style={{ padding: '1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 6,
+                        background: 'var(--surface2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        color: 'var(--accent)',
+                        flexShrink: 0,
+                      }}
+                    >
                       {i + 1}
                     </div>
-                    <p className="font-medium t-text">{q.question}</p>
+                    <p style={{ fontSize: '0.9375rem', fontWeight: 500, color: 'var(--text)', margin: 0, lineHeight: 1.55 }}>
+                      {q.question}
+                    </p>
                   </div>
-                  <div className="ml-10">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                        style={{ background: `${qColor}15`, color: qColor, border: `1px solid ${qColor}30` }}>
+                  <div style={{ paddingLeft: 40 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '2px 8px',
+                          borderRadius: 100,
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          background: `${qColor}15`,
+                          color: qColor,
+                          border: `1px solid ${qColor}30`,
+                        }}
+                      >
                         {qLabel}{qScore !== null ? ` · ${qScore}/100` : ''}
                       </span>
                       {pqf?.ragUsed && (
-                        <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: 'rgba(0,229,255,0.08)', color: 'var(--accent)', border: '1px solid rgba(0,229,255,0.2)' }}>
-                          🔍 RAG Evaluated
-                        </span>
+                        <span className="badge badge-accent" style={{ fontSize: '0.6875rem' }}>RAG Evaluated</span>
                       )}
                     </div>
-                    <p className="text-sm t-muted leading-relaxed p-3 rounded-xl"
-                      style={{ background: 'rgba(128,128,128,0.04)' }}>
-                      {q.answer?.trim() || <span className="italic opacity-50">No answer given</span>}
+                    <p
+                      style={{
+                        fontSize: '0.875rem',
+                        color: 'var(--text-2)',
+                        lineHeight: 1.65,
+                        padding: '0.75rem',
+                        borderRadius: 8,
+                        background: 'var(--surface2)',
+                        margin: 0,
+                        fontStyle: q.answer?.trim() ? 'normal' : 'italic',
+                        opacity: q.answer?.trim() ? 1 : 0.6,
+                      }}
+                    >
+                      {q.answer?.trim() || 'No answer given'}
                     </p>
                     {pqf?.feedback && (
-                      <p className="text-xs mt-2 p-2 rounded-lg t-accent"
-                        style={{ background: 'rgba(128,128,128,0.04)', borderLeft: '2px solid var(--accent)' }}>
-                        🤖 {pqf.feedback}
+                      <p
+                        style={{
+                          fontSize: '0.8125rem',
+                          color: 'var(--text-2)',
+                          padding: '0.625rem 0.875rem',
+                          borderRadius: 8,
+                          background: 'var(--accent-bg)',
+                          borderLeft: '3px solid var(--accent)',
+                          marginTop: 8,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {pqf.feedback}
                       </p>
                     )}
                     {pqf?.matchedConcepts?.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
+                      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {pqf.matchedConcepts.map((c, ci) => (
-                          <span key={ci} className="text-xs px-1.5 py-0.5 rounded"
-                            style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
-                            ✓ {c}
-                          </span>
+                          <span key={ci} className="badge badge-success" style={{ fontSize: '0.6875rem' }}>✓ {c}</span>
                         ))}
                         {pqf.missingConcepts?.map((c, ci) => (
-                          <span key={`m${ci}`} className="text-xs px-1.5 py-0.5 rounded"
-                            style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                            ✗ {c}
-                          </span>
+                          <span key={`m${ci}`} className="badge badge-danger" style={{ fontSize: '0.6875rem' }}>✗ {c}</span>
                         ))}
                       </div>
                     )}
@@ -346,53 +389,43 @@ export default function Feedback() {
           </motion.div>
         )}
 
-        {/* ── AI FEEDBACK TAB ── */}
+        {/* ── AI FEEDBACK ── */}
         {tab === 'ai-feedback' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-            <p className="text-sm t-muted mb-2">
-              Smart feedback generated based on your actual performance across all dimensions.
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)', marginBottom: 4 }}>
+              Smart feedback generated from your actual performance across all dimensions.
             </p>
 
-            {/* Dynamic feedback cards */}
             {(fb.dynamicFeedback?.length > 0 ? fb.dynamicFeedback : fb.suggestions || []).map((msg, i) => {
-              const isGood  = msg.startsWith('✅');
-              const isWarn  = msg.startsWith('⚠️');
-              const color   = isGood ? '#22c55e' : isWarn ? '#ef4444' : 'var(--accent)';
-              const bgColor = isGood ? 'rgba(34,197,94,0.07)' : isWarn ? 'rgba(239,68,68,0.07)' : 'rgba(0,229,255,0.06)';
+              const isGood = msg.startsWith('✅');
+              const isWarn = msg.startsWith('⚠️');
+              const type   = isGood ? 'success' : isWarn ? 'error' : 'info';
               return (
-                <div key={i} className="t-card rounded-xl p-5"
-                  style={{ borderLeft: `3px solid ${color}`, background: bgColor }}>
-                  <p className="text-sm leading-relaxed" style={{ color: isGood ? '#22c55e' : isWarn ? '#fca5a5' : 'var(--text)' }}>
-                    {msg}
-                  </p>
+                <div key={i} className={`alert alert-${type}`}>
+                  <p style={{ margin: 0, fontSize: '0.875rem', lineHeight: 1.6 }}>{msg}</p>
                 </div>
               );
             })}
 
-            {/* Matched / Missing concepts from RAG */}
             {fb.matchedConcepts?.length > 0 && (
-              <div className="t-card rounded-2xl p-6">
-                <h3 className="font-semibold t-text mb-3">🧠 Concept Coverage</h3>
-                <div className="mb-3">
-                  <p className="text-xs t-muted mb-2 font-medium uppercase tracking-wide">Covered</p>
-                  <div className="flex flex-wrap gap-1.5">
+              <div className="card" style={{ padding: '1.5rem', marginTop: 8 }}>
+                <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)', margin: '0 0 1rem', letterSpacing: '-0.01em' }}>
+                  Concept Coverage
+                </h3>
+                <div style={{ marginBottom: '0.875rem' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Covered</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {fb.matchedConcepts.map((c, i) => (
-                      <span key={i} className="text-xs px-2 py-1 rounded-full"
-                        style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}>
-                        ✓ {c}
-                      </span>
+                      <span key={i} className="badge badge-success" style={{ fontSize: '0.75rem' }}>✓ {c}</span>
                     ))}
                   </div>
                 </div>
                 {fb.missingConcepts?.length > 0 && (
                   <div>
-                    <p className="text-xs t-muted mb-2 font-medium uppercase tracking-wide">Missing</p>
-                    <div className="flex flex-wrap gap-1.5">
+                    <p style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Missing</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {fb.missingConcepts.map((c, i) => (
-                        <span key={i} className="text-xs px-2 py-1 rounded-full"
-                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-                          ✗ {c}
-                        </span>
+                        <span key={i} className="badge badge-danger" style={{ fontSize: '0.75rem' }}>✗ {c}</span>
                       ))}
                     </div>
                   </div>
@@ -402,36 +435,39 @@ export default function Feedback() {
           </motion.div>
         )}
 
-        {/* ── RESOURCES TAB ── */}
+        {/* ── RESOURCES ── */}
         {tab === 'resources' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-            <p className="text-sm t-muted">
-              Based on your scores, here are resources to help you improve in weak areas.
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <p style={{ fontSize: '0.875rem', color: 'var(--muted)' }}>
+              Based on your scores, here are targeted resources to help you improve.
             </p>
 
             {(weakAreas.length > 0 ? weakAreas : ['answerQuality', 'communication']).map(area => (
-              <div key={area} className="t-card rounded-2xl p-6">
-                <h3 className="font-display font-semibold capitalize t-text mb-4">
-                  {area.replace('answerQuality', 'Answer Quality')} Resources
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
-                    Needs Work
-                  </span>
-                </h3>
-                <div className="space-y-2">
+              <div key={area} className="card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)', margin: 0, textTransform: 'capitalize', letterSpacing: '-0.01em' }}>
+                    {area.replace('answerQuality', 'Answer Quality')} Resources
+                  </h3>
+                  <span className="badge badge-danger" style={{ fontSize: '0.6875rem' }}>Needs Work</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(resourceMap[area] || []).map((r, i) => (
-                    <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center justify-between p-4 rounded-xl border transition-all"
-                      style={{ background: 'rgba(128,128,128,0.04)', borderColor: 'var(--border)' }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                    <a
+                      key={i}
+                      href={r.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.875rem', borderRadius: 8, border: '1px solid var(--border)', transition: 'all 0.15s ease' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-border)'; e.currentTarget.style.background = 'var(--surface2)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent'; }}
                     >
                       <div>
-                        <p className="text-sm t-text">{r.title}</p>
-                        <p className="text-xs t-muted mt-0.5">{r.type}</p>
+                        <p style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)', margin: '0 0 3px' }}>{r.title}</p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--muted)', margin: 0 }}>{r.type}</p>
                       </div>
-                      <svg className="w-4 h-4 t-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
                       </svg>
                     </a>
                   ))}
@@ -439,11 +475,11 @@ export default function Feedback() {
               </div>
             ))}
 
-            <div className="flex gap-3">
-              <Link to="/interview" className="flex-1 py-3.5 rounded-xl text-center text-sm font-semibold text-white btn-primary">
+            <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+              <Link to="/interview" className="btn-primary" style={{ flex: 1, textAlign: 'center', padding: '11px', textDecoration: 'none', display: 'block', borderRadius: 8 }}>
                 Practice Again
               </Link>
-              <Link to="/mock-test" className="flex-1 py-3.5 rounded-xl text-center text-sm btn-outline">
+              <Link to="/mock-test" className="btn-secondary" style={{ flex: 1, textAlign: 'center', padding: '11px', textDecoration: 'none', display: 'block', borderRadius: 8 }}>
                 Take Mock Test
               </Link>
             </div>
@@ -451,7 +487,6 @@ export default function Feedback() {
         )}
 
       </main>
-
       <Footer />
     </div>
   );

@@ -5,7 +5,10 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { ensurePremiumOverride } = require('../middleware/premiumMiddleware');
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const getGoogleClient = () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  return new OAuth2Client(clientId);
+};
 
 const makeToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
@@ -14,13 +17,13 @@ const buildUserPayload = (user) => ({
   id:            user._id,
   name:          user.name,
   email:         user.email,
-  avatar:        user.avatar,
-  authProvider:  user.authProvider,
+  avatar:        user.avatar || '',
+  authProvider:  user.authProvider || 'local',
   isPremium:     user.isPremium     || false,
   premiumExpiry: user.premiumExpiry || null,
   plan:          user.subscription?.plan || (user.isPremium ? 'premium' : 'free'),
-  stats:         user.stats,
-  dailyUsage:    user.dailyUsage,
+  stats:         user.stats || {},
+  dailyUsage:    user.dailyUsage || {},
 });
 
 const sendToken = (user, statusCode, res) => {
@@ -32,19 +35,47 @@ const sendToken = (user, statusCode, res) => {
 const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    if (!name || !email || !password)
-      return res.status(400).json({ success: false, message: 'Please fill all fields' });
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Please fill in all fields' });
+    }
 
-    const existing = await User.findOne({ email });
-    if (existing)
-      return res.status(400).json({ success: false, message: 'Email already registered' });
+    const trimmedName = name.trim();
+    const normalizedEmail = email.toLowerCase().trim();
 
-    const user = await User.create({ name, email, password });
+    if (trimmedName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid full name' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'An account with this email already exists' });
+    }
+
+    const user = await User.create({
+      name: trimmedName,
+      email: normalizedEmail,
+      password,
+      authProvider: 'local',
+    });
+
     // Apply permanent premium override for privileged emails
     await ensurePremiumOverride(user);
     sendToken(user, 201, res);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, message: 'An account with this email already exists' });
+    }
+    console.error('[Register Error]:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Registration failed' });
   }
 };
 
@@ -52,22 +83,34 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
+    if (!email || !password) {
       return res.status(400).json({ success: false, message: 'Enter email and password' });
+    }
 
-    const user = await User.findOne({ email }).select('+password');
-    if (!user || !user.password)
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    if (!user.password) {
+      return res.status(401).json({
+        success: false,
+        message: 'This account was registered using Google. Please sign in with Google.',
+      });
+    }
 
     const match = await user.comparePassword(password);
-    if (!match)
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!match) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
 
     // Apply permanent premium override for privileged emails
     await ensurePremiumOverride(user);
     sendToken(user, 200, res);
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('[Login Error]:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Login failed' });
   }
 };
 
@@ -75,38 +118,76 @@ const login = async (req, res) => {
 const googleAuth = async (req, res) => {
   try {
     const { credential } = req.body;
-    const ticket = await googleClient.verifyIdToken({
-      idToken:  credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const { name, email, picture, sub: googleId } = ticket.getPayload();
-
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = await User.create({ name, email, avatar: picture, googleId, authProvider: 'google' });
-    } else if (!user.googleId) {
-      user.googleId = googleId; user.avatar = picture; user.authProvider = 'google';
-      await user.save();
+    if (!credential) {
+      return res.status(400).json({ success: false, message: 'Google credential token is required' });
     }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('[Google Auth] GOOGLE_CLIENT_ID is not configured');
+      return res.status(500).json({ success: false, message: 'Google authentication is not configured on server' });
+    }
+
+    const client = getGoogleClient();
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      return res.status(400).json({ success: false, message: 'Invalid Google token payload' });
+    }
+
+    const { name, picture, sub: googleId } = payload;
+    const normalizedEmail = payload.email.toLowerCase().trim();
+
+    let user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      user = await User.create({
+        name: name || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        avatar: picture || '',
+        googleId,
+        authProvider: 'google',
+      });
+    } else {
+      let updated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        updated = true;
+      }
+      if (!user.avatar && picture) {
+        user.avatar = picture;
+        updated = true;
+      }
+      if (updated) {
+        await user.save({ validateBeforeSave: false });
+      }
+    }
+
     // Apply permanent premium override for privileged emails
     await ensurePremiumOverride(user);
     sendToken(user, 200, res);
   } catch (err) {
-    console.error('Google auth error:', err.message);
-    res.status(500).json({ success: false, message: 'Google authentication failed' });
+    console.error('[Google Auth Error]:', err.message);
+    res.status(401).json({ success: false, message: 'Google authentication failed: ' + (err.message || 'Invalid token') });
   }
 };
 
 /* ── GET ME ────────────────────────────────────────────────────────── */
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const userId = req.user?._id || req.user?.id;
+    const user = await User.findById(userId).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     if (user.isPremium && user.premiumExpiry && new Date() > new Date(user.premiumExpiry)) {
       user.isPremium = false;
-      user.subscription.plan = 'free';
-      await user.save();
+      if (user.subscription) {
+        user.subscription.plan = 'free';
+      }
+      await user.save({ validateBeforeSave: false });
     }
     res.json({ success: true, user: buildUserPayload(user) });
   } catch (err) {
@@ -353,4 +434,38 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, googleAuth, getMe, getUsage, forgotPassword, resetPassword };
+/* ── UPDATE AVATAR ─────────────────────────────────────────────────── */
+const updateAvatar = async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    if (typeof avatar !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid avatar data' });
+    }
+
+    const trimmedAvatar = avatar.trim();
+    if (trimmedAvatar.length > 500) {
+      return res.status(400).json({ success: false, message: 'Avatar string is too long' });
+    }
+
+    const userId = req.user?._id || req.user?.id;
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.avatar = trimmedAvatar;
+    await user.save({ validateBeforeSave: false });
+
+    res.json({
+      success: true,
+      message: 'Avatar updated successfully',
+      avatar: user.avatar,
+      user: buildUserPayload(user),
+    });
+  } catch (err) {
+    console.error('[Update Avatar Error]:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Failed to update avatar' });
+  }
+};
+
+module.exports = { register, login, googleAuth, getMe, getUsage, forgotPassword, resetPassword, updateAvatar };

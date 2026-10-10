@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -12,14 +12,34 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// redirect to login on 401
+// redirect to login on 401 only for protected resource requests
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('hm_token');
-      localStorage.removeItem('hm_user');
-      window.location.href = '/login';
+      const url = err.config?.url || '';
+      const isAuthEndpoint =
+        url.includes('/auth/login') ||
+        url.includes('/auth/register') ||
+        url.includes('/auth/google') ||
+        url.includes('/auth/forgot-password') ||
+        url.includes('/auth/reset-password');
+
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('hm_token');
+        localStorage.removeItem('hm_user');
+        const path = window.location.pathname;
+        const isPublicPage =
+          path === '/' ||
+          path === '/login' ||
+          path === '/signup' ||
+          path === '/forgot-password' ||
+          path.startsWith('/reset-password');
+
+        if (!isPublicPage) {
+          window.location.href = '/login';
+        }
+      }
     }
     return Promise.reject(err);
   }
@@ -27,12 +47,28 @@ api.interceptors.response.use(
 
 /* ── Interview API ───────────────────────────────────────────────── */
 export const interviewAPI = {
-  getQuestions: (role, category, difficulty, count) =>
-    api.get(`/interviews/questions?role=${role}&category=${category}&difficulty=${difficulty}&count=${count}`),
+  getQuestions: (role, technology, difficulty, count, category, roundType, fieldId, technologies) => {
+    const params = new URLSearchParams({
+      role: role || 'fullstack',
+      difficulty: difficulty || 'medium',
+      count: String(count || 5),
+    });
+    if (technologies) {
+      const techStr = Array.isArray(technologies) ? technologies.join(',') : technologies;
+      params.append('technologies', techStr);
+    } else if (technology) {
+      params.append('technology', technology);
+    }
+    if (category) params.append('category', category);
+    if (roundType) params.append('roundType', roundType);
+    if (fieldId) params.append('fieldId', fieldId);
+    return api.get(`/interviews/questions?${params.toString()}`);
+  },
   save:         (data) => api.post('/interviews', data),
   getAll:       ()     => api.get('/interviews'),
   getOne:       (id)   => api.get(`/interviews/${id}`),
   getRoles:     ()     => api.get('/interviews/roles'),
+  getTaxonomy:  ()     => api.get('/interviews/taxonomy'),
 };
 
 /* ── Mock Test API ───────────────────────────────────────────────── */
@@ -74,8 +110,9 @@ export const paymentAPI = {
 
 /* ── Auth API ────────────────────────────────────────────────────── */
 export const authAPI = {
-  me:    () => api.get('/auth/me'),
-  usage: () => api.get('/auth/usage'),
+  me:           ()       => api.get('/auth/me'),
+  usage:        ()       => api.get('/auth/usage'),
+  updateAvatar: (avatar) => api.put('/auth/avatar', { avatar }),
 };
 
 export default api;

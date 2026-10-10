@@ -1,50 +1,49 @@
 /**
- * SkeletonLoader — shimmer skeleton placeholders for loading states.
- *
- * Props:
- *   rows    — number of rows to render (default: 3)
- *   height  — height of each row in px (default: 56)
- *   gap     — gap between rows in px (default: 12)
- *   rounded — border radius (default: '0.75rem')
+ * SkeletonLoader — professional shimmer loading states
  */
-export default function SkeletonLoader({
-  rows = 3,
-  height = 56,
-  gap = 12,
-  rounded = '0.75rem',
-}) {
+export default function SkeletonLoader({ rows = 3, height = 48, gap = 10 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap }}>
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
           className="skeleton"
-          style={{
-            height,
-            borderRadius: rounded,
-            // Stagger the widths slightly so they look natural
-            width: i % 3 === 2 ? '75%' : '100%',
-          }}
+          style={{ height, borderRadius: 6 }}
         />
       ))}
     </div>
   );
 }
 
-/**
- * SkeletonCard — single-item skeleton card with icon + two lines.
- */
-export function SkeletonCard() {
+export function SkeletonCard({ height = 160 }) {
   return (
     <div
-      className="t-card rounded-2xl p-5"
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}
-    >
-      <div className="skeleton" style={{ width: 44, height: 44, borderRadius: '0.625rem', flexShrink: 0 }} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="skeleton" style={{ height: 16, borderRadius: 6, width: '60%' }} />
-        <div className="skeleton" style={{ height: 12, borderRadius: 6, width: '85%' }} />
-      </div>
+      className="skeleton"
+      style={{ height, borderRadius: 12 }}
+    />
+  );
+}
+
+export function SkeletonText({ lines = 3, className = '' }) {
+  const widths = [100, 80, 65];
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <div
+          key={i}
+          className="skeleton"
+          style={{ height: 14, width: `${widths[i % widths.length]}%`, borderRadius: 4 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonStat() {
+  return (
+    <div style={{ padding: '1.25rem', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="skeleton" style={{ height: 12, width: '50%', borderRadius: 4, marginBottom: 10 }} />
+      <div className="skeleton" style={{ height: 30, width: '60%', borderRadius: 6 }} />
     </div>
   );
 }

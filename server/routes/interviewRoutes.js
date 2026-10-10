@@ -8,10 +8,14 @@ const {
   getSession,
   deleteSession,
   getAvailableRoles,
+  getTaxonomy,
 } = require('../controllers/interviewController');
 
-const { protect }          = require('../middleware/authMiddleware');
-const { limitInterviews }  = require('../middleware/usageLimiter');
+const { protect, optionalProtect } = require('../middleware/authMiddleware');
+const { limitInterviews }          = require('../middleware/usageLimiter');
+
+// GET  /api/interviews/taxonomy — Master Career Field Taxonomy & Rounds
+router.get('/taxonomy',  optionalProtect, getTaxonomy);
 
 // GET  /api/interviews/roles
 router.get('/roles',     protect, getAvailableRoles);
