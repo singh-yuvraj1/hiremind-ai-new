@@ -1140,7 +1140,7 @@ export default function Interview() {
         questions,
         answers:        allAnswers || answersRef.current,
         duration:       timer.secs,
-        postureData:    avgPosture(),
+        postureData:    {},
         tabSwitches:    antiCheat.warningCount,
         cheatingEvents: antiCheat.violations,
       });

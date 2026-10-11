@@ -105,7 +105,6 @@ export default function Dashboard() {
     { subject: 'Comm.',      value: stats.avgCommunication || 0 },
     { subject: 'Confidence', value: stats.avgConfidence    || 0 },
     { subject: 'Technical',  value: stats.avgAnswerQuality || 0 },
-    { subject: 'Posture',    value: stats.avgPosture       || 0 },
     { subject: 'Overall',    value: stats.avgScore         || 0 },
   ];
 

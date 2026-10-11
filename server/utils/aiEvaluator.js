@@ -94,15 +94,17 @@ const scoreAnswer = (question, answer) => {
 /**
  * Rule-based evaluation of a full Q&A list.
  * @param {Array<{question: string, answer: string}>} qaList
- * @param {{ confidence?: number, posture?: number, eyeContact?: number }} postureData
  * @returns {object} Full evaluation result
  */
-const ruleBasedEvaluation = (qaList, postureData = {}) => {
+const ruleBasedEvaluation = (qaList) => {
   const perQ = qaList.map(({ question, answer }) => scoreAnswer(question, answer));
 
   const avg = perQ.length
     ? Math.round(perQ.reduce((sum, q) => sum + q.score, 0) / perQ.length)
     : 0;
+
+  const communication = Math.min(100, Math.round(avg * 0.85 + 12));
+  const overallScore  = Math.round(avg * 0.70 + communication * 0.30);
 
   const allStrengths   = [...new Set(perQ.flatMap((q) => q.strengths))].slice(0, 5);
   const allWeaknesses  = [...new Set(perQ.flatMap((q) => q.weaknesses))].slice(0, 4);
@@ -111,20 +113,20 @@ const ruleBasedEvaluation = (qaList, postureData = {}) => {
   if (!allStrengths.length)   allStrengths.push('Completed all interview questions');
   if (!allSuggestions.length) allSuggestions.push('Practice using the STAR method for behavioral questions');
 
-  const summaryText = avg >= 80
-    ? `Outstanding performance (${avg}/100)! You demonstrated strong technical knowledge with clear, structured responses.`
-    : avg >= 65
-      ? `Good performance (${avg}/100). You showed solid understanding but can improve depth and use of real examples.`
-      : avg >= 45
-        ? `Decent attempt (${avg}/100). Focus on structuring answers and adding concrete technical examples.`
-        : `Keep practising (${avg}/100). Work on expanding answers, using technical terminology, and the STAR method.`;
+  const summaryText = overallScore >= 80
+    ? `Outstanding performance (${overallScore}/100)! You demonstrated strong technical knowledge with clear, structured responses.`
+    : overallScore >= 65
+      ? `Good performance (${overallScore}/100). You showed solid understanding but can improve depth and use of real examples.`
+      : overallScore >= 45
+        ? `Decent attempt (${overallScore}/100). Focus on structuring answers and adding concrete technical examples.`
+        : `Keep practising (${overallScore}/100). Work on expanding answers, using technical terminology, and the STAR method.`;
 
   return {
-    overallScore:          avg,
-    communication:         Math.min(100, Math.round(avg * 0.85 + 12)),
-    confidence:            Math.min(100, postureData.confidence   ?? 62),
+    overallScore,
+    technicalScore:        avg,
+    communication,
+    confidence:            65,
     answerQuality:         avg,
-    posture:               Math.min(100, Math.round(((postureData.posture ?? 60) + (postureData.eyeContact ?? 55)) / 2)),
     strengths:             allStrengths,
     weaknesses:            allWeaknesses,
     suggestions:           allSuggestions,
@@ -151,7 +153,6 @@ RETURN THIS EXACT JSON (fill every field — DO NOT skip any):
   "communication": <integer 0-100>,
   "confidence": <integer 0-100>,
   "answerQuality": <integer 0-100>,
-  "posture": 60,
   "strengths": ["<strength_1>", "<strength_2>", "<strength_3>"],
   "weaknesses": ["<weakness_1>", "<weakness_2>"],
   "suggestions": ["<suggestion_1>", "<suggestion_2>", "<suggestion_3>"],
@@ -178,15 +179,14 @@ RETURN THIS EXACT JSON (fill every field — DO NOT skip any):
  *
  * @param {Array<{question: string, answer: string}>} qaList
  * @param {string} jobRole
- * @param {{ confidence?: number, posture?: number, eyeContact?: number }} [postureData]
  * @returns {Promise<object>} Evaluation result
  */
-const evaluateInterview = async (qaList, jobRole = 'General', postureData = {}) => {
+const evaluateInterview = async (qaList, jobRole = 'General') => {
   const apiKey = process.env.OPENROUTER_API_KEY;
 
   if (!apiKey || apiKey.length < 20 || apiKey === 'your_openrouter_api_key_here') {
     console.log('[aiEvaluator] No API key — using rule-based evaluation.');
-    return ruleBasedEvaluation(qaList, postureData);
+    return ruleBasedEvaluation(qaList);
   }
 
   try {
@@ -226,12 +226,15 @@ const evaluateInterview = async (qaList, jobRole = 'General', postureData = {}) 
 
     const parsed = JSON.parse(match[0]);
 
-    // Merge real posture sensor data (override AI guess)
-    parsed.posture    = Math.min(100, Math.round(((postureData.posture ?? 60) + (postureData.eyeContact ?? 55)) / 2));
-    parsed.confidence = Math.min(100, postureData.confidence ?? parsed.confidence ?? 65);
+    // Overall score strictly calculated from actual Technical (70%) and Communication (30%)
+    const techScore = parsed.technicalScore ?? parsed.answerQuality ?? 0;
+    const commScore = parsed.communication ?? 0;
+    parsed.overallScore = Math.round(techScore * 0.70 + commScore * 0.30);
+    parsed.technicalScore = techScore;
+    parsed.confidence = Math.min(100, parsed.confidence ?? 65);
 
     // Clamp all scores
-    ['overallScore', 'communication', 'answerQuality', 'posture', 'confidence'].forEach((k) => {
+    ['overallScore', 'communication', 'answerQuality', 'technicalScore', 'confidence'].forEach((k) => {
       if (typeof parsed[k] === 'number') {
         parsed[k] = Math.max(0, Math.min(100, Math.round(parsed[k])));
       }
@@ -250,7 +253,7 @@ const evaluateInterview = async (qaList, jobRole = 'General', postureData = {}) 
 
   } catch (err) {
     console.warn('[aiEvaluator] AI call failed → falling back to rule-based.', err.message);
-    return ruleBasedEvaluation(qaList, postureData);
+    return ruleBasedEvaluation(qaList);
   }
 };
 

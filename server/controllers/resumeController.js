@@ -1,309 +1,238 @@
 // ============================================================
 //  controllers/resumeController.js  —  HireMind AI
-//  FIXED + UPGRADED:
-//    • Accepts PDF upload (via multer memoryStorage + pdf-parse)
-//    • Accepts plain-text body (backward-compatible)
-//    • AI analysis (OpenRouter) with rule-based fallback
-//    • ATS scoring, keyword matching, section analysis
-//    • Saves last analysis to user profile
+//  Complete, Robust ATS Resume Analysis:
+//    • Multi-format extraction: PDF, DOCX, TXT via documentExtractor
+//    • Scanned PDF & empty document detection
+//    • Transparent 7-dimension deterministic ATS scoring (0-100)
+//    • Comprehensive Job Description matching (Required vs Preferred)
+//    • AI-powered qualitative review (OpenRouter) with safe schema fallback
+//    • Analysis persistence per authenticated user with history
 // ============================================================
 
-const axios                              = require('axios');
-const User                               = require('../models/User');
-const { extractTextFromPDF }             = require('../utils/pdfParser');
+const axios                       = require('axios');
+const User                        = require('../models/User');
+const ResumeAnalysis              = require('../models/ResumeAnalysis');
+const { extractDocumentText }     = require('../utils/documentExtractor');
+const { evaluateATSResume, ROLE_SKILL_PROFILES } = require('../utils/atsScoringEngine');
 
-/* ── ATS keyword lists ────────────────────────────────────────────── */
+/* ── AI-powered qualitative review helper ───────────────────────── */
 
-// Role-specific keyword sets — used by both rule-based fallback and AI prompt
-const ROLE_KEYWORDS = {
-  'Software Engineer':     ['algorithms', 'data structures', 'system design', 'java', 'python', 'c++', 'go', 'sql', 'rest api', 'microservices', 'git', 'testing', 'code review', 'ci/cd', 'linux', 'docker', 'design patterns', 'object-oriented', 'debugging', 'scalability'],
-  'Frontend Developer':    ['react', 'vue', 'angular', 'javascript', 'typescript', 'html', 'css', 'tailwind', 'redux', 'webpack', 'vite', 'responsive design', 'accessibility', 'ui/ux', 'rest api', 'graphql', 'jest', 'cypress', 'performance optimization', 'sass'],
-  'Backend Developer':     ['node.js', 'python', 'java', 'go', 'rest api', 'graphql', 'postgresql', 'mongodb', 'redis', 'microservices', 'docker', 'kubernetes', 'aws', 'authentication', 'sql', 'orm', 'message queue', 'kafka', 'rabbitmq', 'ci/cd'],
-  'Full Stack Developer':  ['react', 'node.js', 'javascript', 'typescript', 'html', 'css', 'postgresql', 'mongodb', 'rest api', 'docker', 'git', 'aws', 'redux', 'express', 'graphql', 'authentication', 'deployment', 'webpack', 'testing', 'linux'],
-  'Data Scientist':        ['python', 'pandas', 'numpy', 'scikit-learn', 'tensorflow', 'pytorch', 'sql', 'jupyter', 'statistics', 'machine learning', 'data visualization', 'matplotlib', 'seaborn', 'feature engineering', 'regression', 'classification', 'nlp', 'deep learning', 'a/b testing', 'data cleaning'],
-  'ML Engineer':           ['python', 'tensorflow', 'pytorch', 'scikit-learn', 'mlops', 'kubeflow', 'airflow', 'docker', 'kubernetes', 'aws sagemaker', 'model deployment', 'feature engineering', 'deep learning', 'transformer', 'hugging face', 'distributed training', 'gpu', 'ci/cd', 'data pipeline', 'monitoring'],
-  'DevOps Engineer':       ['docker', 'kubernetes', 'terraform', 'ansible', 'aws', 'gcp', 'azure', 'ci/cd', 'jenkins', 'github actions', 'linux', 'bash', 'prometheus', 'grafana', 'nginx', 'helm', 'vault', 'monitoring', 'infrastructure as code', 'reliability'],
-  'Product Manager':       ['product roadmap', 'user stories', 'agile', 'scrum', 'stakeholder management', 'okrs', 'kpis', 'a/b testing', 'user research', 'wireframes', 'jira', 'confluence', 'go-to-market', 'market analysis', 'prioritization', 'product strategy', 'data-driven', 'cross-functional', 'mvp', 'customer discovery'],
-  'Mobile Developer':      ['react native', 'flutter', 'swift', 'kotlin', 'ios', 'android', 'xcode', 'android studio', 'rest api', 'firebase', 'push notifications', 'offline storage', 'app store', 'play store', 'ui/ux', 'performance', 'testing', 'ci/cd', 'typescript', 'dart'],
-  'AI Engineer':           ['llm', 'langchain', 'openai', 'rag', 'vector database', 'embedding', 'fine-tuning', 'prompt engineering', 'python', 'hugging face', 'transformer', 'pytorch', 'fastapi', 'api integration', 'nlp', 'machine learning', 'mlops', 'docker', 'scalability', 'evaluation'],
-};
+const aiQualitativeReview = async (resumeText, targetRole, jobDescription, deterministicResult, apiKey) => {
+  const isJobSpecific = deterministicResult.isJobSpecific;
+  const prompt = `You are a senior technical recruiter and ATS career advisor. Provide a constructive, professional qualitative review of this resume for the role: "${targetRole}".
 
-// Soft skills are universal
-const SOFT_KEYWORDS = [
-  'leadership', 'teamwork', 'communication', 'problem-solving',
-  'agile', 'scrum', 'collaboration', 'analytical', 'initiative',
-  'time management', 'critical thinking',
-];
+CRITICAL INSTRUCTIONS:
+1. Base your evaluation strictly on evidence present in the candidate's actual resume text.
+2. DO NOT invent or assume credentials, metrics, employers, or skills that are not supported.
+3. Suggest 2-3 actionable bullet point improvements with realistic rewrites.
+4. If metrics are missing, explain how the candidate can measure their own work rather than making up false percentages.
+5. Respond with valid raw JSON only — no markdown code blocks, no backticks, no extra text.
 
-/* ── Rule-based ATS analysis ──────────────────────────────────────── */
+${isJobSpecific ? `TARGET JOB DESCRIPTION:\n${jobDescription.slice(0, 1500)}\n\n` : ''}
+RESUME TEXT:
+${resumeText.slice(0, 3500)}
 
-function ruleBasedResumeAnalysis(text, targetRole) {
-  const t         = text.toLowerCase();
-  const wordCount = text.trim().split(/\s+/).length;
-
-  // ── Contact & Online Presence ──────────────────────────
-  const hasEmail    = /@[a-z0-9.-]+\.[a-z]{2,}/.test(t);
-  const hasPhone    = /\d{10}|\+?\d[\d\s\-().]{8,15}\d/.test(t);
-  const hasLinkedIn = /linkedin\.com/.test(t);
-  const hasGitHub   = /github\.com/.test(t);
-
-  // ── Sections ───────────────────────────────────────────
-  const hasExp      = /\b(experience|work history|professional history|internship|employment)\b/.test(t);
-  const hasSkills   = /\b(skills|technical skills|technologies|proficiencies|expertise)\b/.test(t);
-  const hasEdu      = /\b(education|university|college|degree|b\.?tech|bachelor|master|mba|phd)\b/.test(t);
-  const hasAchiev   = /\b(achievement|award|won|prize|rank|certification|certified|publication)\b/.test(t);
-  const hasSummary  = /\b(summary|objective|profile|about me|career objective)\b/.test(t);
-  const hasProjects = /\b(projects|personal projects|open.?source|github\.com)\b/.test(t);
-
-  // ── Role-specific keyword analysis ─────────────────────
-  const roleKws    = ROLE_KEYWORDS[targetRole] || ROLE_KEYWORDS['Software Engineer'];
-  const foundTech  = roleKws.filter((k) => t.includes(k.toLowerCase()));
-  const missingTech = roleKws.filter((k) => !t.includes(k.toLowerCase()));
-  // Show up to 8 most impactful missing keywords
-  const missingTop = missingTech.slice(0, 8);
-  const foundSoft  = SOFT_KEYWORDS.filter((k) => t.includes(k));
-
-  // ── Keyword match ratio (role-aware score bonus) ────────
-  const keywordMatchRatio = roleKws.length > 0 ? foundTech.length / roleKws.length : 0;
-
-  // ── Quantified metrics ─────────────────────────────────
-  const hasMetrics = /\d+\s*(%|percent|users|customers|requests|ms|seconds|million|k\s+users|x\s+faster|x\s+improvement)/.test(t);
-
-  // ── Section scores (0–10) ──────────────────────────────
-  const contactScore = (hasEmail ? 3 : 0) + (hasPhone ? 2 : 0) + (hasLinkedIn ? 3 : 0) + (hasGitHub ? 2 : 0);
-  const summaryScore = hasSummary ? 7 : 3;
-  const expScore     = hasExp     ? (wordCount > 300 ? 9 : 6) : 2;
-  // Skills score is now role-aware based on keyword match ratio
-  const skillsScore  = hasSkills
-    ? (keywordMatchRatio >= 0.50 ? 9 : keywordMatchRatio >= 0.30 ? 7 : keywordMatchRatio >= 0.15 ? 5 : 3)
-    : (keywordMatchRatio >= 0.20 ? 3 : 1);
-  const eduScore     = hasEdu    ? 8 : 3;
-  const achievScore  = hasAchiev ? (hasMetrics ? 9 : 7) : 3;
-
-  // ── ATS score (weighted, role-aware) ───────────────────
-  const raw = (
-    contactScore  * 1.5 +
-    summaryScore  * 1.5 +
-    expScore      * 3   +
-    skillsScore   * 3   +
-    eduScore      * 1.5 +
-    achievScore   * 1.5 +
-    (hasProjects             ? 5  : 0) +
-    (hasMetrics              ? 5  : 0) +
-    (foundSoft.length >= 3   ? 5  : 0) +
-    Math.round(keywordMatchRatio * 10)   // 0–10 bonus based on role keyword match
-  );
-
-  const atsScore = Math.min(100, Math.round(raw));
-
-  // ── Strengths & Improvements ───────────────────────────
-  const strengths = [];
-  const improvements = [];
-
-  if (foundTech.length >= 6) strengths.push(`Strong ${targetRole} keyword match (${foundTech.length}/${roleKws.length} role-specific skills found)`);
-  else if (foundTech.length >= 3) strengths.push(`Moderate ${targetRole} keyword coverage (${foundTech.length}/${roleKws.length} skills found — add more)`);
-  if (hasLinkedIn && hasGitHub) strengths.push('Both LinkedIn and GitHub profiles included — great for ATS');
-  if (hasMetrics)   strengths.push('Uses quantified metrics — highly valued by ATS and recruiters');
-  if (hasProjects)  strengths.push('Projects section demonstrates practical experience');
-  if (hasAchiev)    strengths.push('Achievements section adds credibility');
-  if (!strengths.length) strengths.push('Resume submitted successfully for analysis');
-
-  if (!hasEmail)    improvements.push('Add a professional email address');
-  if (!hasPhone)    improvements.push('Add a phone number');
-  if (!hasLinkedIn) improvements.push('Add LinkedIn profile URL (linkedin.com/in/yourname)');
-  if (!hasGitHub)   improvements.push('Add GitHub profile URL — critical for tech roles');
-  if (!hasSummary)  improvements.push('Add a professional summary (3–4 lines) at the top');
-  if (!hasExp)      improvements.push('Add a clear "Experience" or "Work History" section');
-  if (!hasSkills)   improvements.push('Add a dedicated "Skills" section with categorised tools');
-  if (!hasProjects) improvements.push('Add a "Projects" section with GitHub links or live URLs');
-  if (!hasMetrics)  improvements.push('Quantify achievements: "Improved performance by 40%", "Served 10K+ users"');
-  if (wordCount < 250) improvements.push('Resume is too brief. Aim for 400–700 words (1 page) or 700–1200 (2 pages)');
-  if (missingTop.length >= 4) improvements.push(`Key ${targetRole} skills missing: ${missingTop.slice(0, 6).join(', ')}`);
-
-  return {
-    atsScore,
-    sections: {
-      contact:      { score: contactScore, feedback: contactScore >= 8 ? 'Excellent contact section.' : 'Add LinkedIn and GitHub for better ATS scores.' },
-      summary:      { score: summaryScore, feedback: hasSummary ? 'Professional summary found — keep it under 4 lines.' : 'Missing summary/objective. Add one detailing your role, years of experience, and key strength.' },
-      experience:   { score: expScore,     feedback: hasExp ? (wordCount > 300 ? 'Strong experience section with good detail.' : 'Experience found but seems brief — add bullet points with impact.') : 'No experience section found — add even internships or volunteer work.' },
-      skills:       { score: skillsScore,  feedback: `Found ${foundTech.length}/${roleKws.length} ${targetRole} keywords. ${keywordMatchRatio < 0.4 ? `Missing role-critical skills: ${missingTop.slice(0, 4).join(', ')}.` : 'Good keyword coverage for this role.'}` },
-      education:    { score: eduScore,     feedback: hasEdu ? 'Education section found.' : 'Add your education details (degree, institution, year).' },
-      achievements: { score: achievScore,  feedback: hasAchiev ? (hasMetrics ? 'Excellent — achievements with numbers!' : 'Add numbers to your achievements for impact.') : 'No achievements found. Add awards, certifications, or ranked projects.' },
-    },
-    keywords: {
-      found:   foundTech,
-      missing: missingTop,
-      soft:    foundSoft,
-    },
-    strengths,
-    improvements,
-    summary: `ATS Score: ${atsScore}/100 for ${targetRole}. ${atsScore >= 75 ? 'Strong resume — ready to pass most ATS filters.' : atsScore >= 55 ? 'Decent resume with room to improve. Focus on role-specific keywords and metrics.' : 'Needs significant improvement. Add role-specific keywords, quantified metrics, and missing sections.'}`,
-    wordCount,
-    pagesEstimate: Math.ceil(wordCount / 350),
-  };
-}
-
-/* ── AI-based ATS analysis ────────────────────────────────────────── */
-
-async function aiResumeAnalysis(text, targetRole, apiKey) {
-  // Build role-specific required keywords hint for the AI
-  const roleKws = ROLE_KEYWORDS[targetRole] || ROLE_KEYWORDS['Software Engineer'];
-  const roleHint = roleKws.slice(0, 12).join(', ');
-
-  const prompt = `You are an expert ATS resume analyzer and career coach. Analyze this resume strictly for the role: "${targetRole}".
-
-CRITICAL: The ATS score must reflect how well this resume matches a "${targetRole}" role specifically.
-Key skills required for ${targetRole}: ${roleHint}
-Score the resume based on: how many of these role-specific skills are present, quality of experience, and overall ATS compatibility.
-Two different resumes for different roles should get different scores.
-
-RESUME (truncated to 4000 chars):
-${text.slice(0, 4000)}
-
-Respond ONLY with raw JSON — no markdown fences, no extra text:
+EXPECTED JSON STRUCTURE:
 {
-  "atsScore": <0-100 integer reflecting match for ${targetRole} specifically>,
-  "sections": {
-    "contact":      { "score": <0-10>, "feedback": "<specific feedback>" },
-    "summary":      { "score": <0-10>, "feedback": "<specific feedback>" },
-    "experience":   { "score": <0-10>, "feedback": "<specific feedback for ${targetRole}>" },
-    "skills":       { "score": <0-10>, "feedback": "<mention specific ${targetRole} skills found and missing>" },
-    "education":    { "score": <0-10>, "feedback": "<specific feedback>" },
-    "achievements": { "score": <0-10>, "feedback": "<specific feedback>" }
-  },
-  "keywords": {
-    "found":   ["<${targetRole}-relevant keyword found in resume>"],
-    "missing": ["<important ${targetRole} keyword missing from resume>"],
-    "soft":    ["<soft skill found>"]
-  },
-  "strengths":    ["<strength specific to ${targetRole} role>", "<strength_2>", "<strength_3>"],
-  "improvements": ["<improvement specific to ${targetRole} role>", "<improvement_2>", "<improvement_3>", "<improvement_4>"],
-  "summary": "<2–3 sentence honest, role-specific assessment mentioning ${targetRole} fit explicitly>"
+  "qualitativeSummary": "<2-3 sentence honest recruiter assessment of candidate's presentation and fit>",
+  "strengths": ["<specific strength based on actual resume text>", "<strength 2>", "<strength 3>"],
+  "weaknesses": ["<constructive weakness observed>", "<weakness 2>", "<weakness 3>"],
+  "bulletPointSuggestions": [
+    {
+      "originalBullet": "<phrase or duty from the resume>",
+      "suggestedRewrite": "<action-verb-driven rewrite without fabricated metrics>",
+      "reason": "<why this improves ATS and recruiter impact>"
+    }
+  ],
+  "recommendedProjects": ["<relevant project idea tailored to target role/JD>"]
 }`;
 
   const response = await axios.post(
     'https://openrouter.ai/api/v1/chat/completions',
     {
-      model:    'mistralai/mistral-7b-instruct:free',
+      model: 'mistralai/mistral-7b-instruct:free',
       messages: [
-        { role: 'system', content: 'You are an expert ATS resume analyzer. Always respond with valid JSON only. Never use markdown code blocks.' },
-        { role: 'user',   content: prompt },
+        { role: 'system', content: 'You are an expert ATS technical resume reviewer. You ALWAYS output valid JSON only. Never use markdown code fences.' },
+        { role: 'user', content: prompt },
       ],
       temperature: 0.1,
-      max_tokens:  2000,
+      max_tokens: 1500,
     },
     {
       headers: {
-        Authorization:  `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer':  process.env.CLIENT_URL || 'http://localhost:5000',
-        'X-Title':       'HireMind AI',
+        'HTTP-Referer': process.env.CLIENT_URL || 'http://localhost:5000',
+        'X-Title': 'HireMind AI',
       },
-      timeout: 45000,
+      timeout: 35000,
     }
   );
 
-  const raw     = response.data?.choices?.[0]?.message?.content || '';
+  const raw = response.data?.choices?.[0]?.message?.content || '';
   const cleaned = raw.replace(/```(?:json)?/gi, '').trim();
-  const match   = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI returned no parseable JSON');
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI returned no parseable JSON.');
 
   return JSON.parse(match[0]);
-}
+};
 
 /* ════════════════════════════════════════════════════════════════════
    CONTROLLER: POST /api/resume/analyze
-   Accepts: multipart/form-data (file=resume.pdf + targetRole)
-         OR application/json   (resumeText + targetRole) [backward-compat]
+   Accepts: multipart/form-data (file: resume + targetRole + jobDescription)
+         OR application/json    (resumeText + targetRole + jobDescription)
    ════════════════════════════════════════════════════════════════════ */
 
 const analyzeResume = async (req, res) => {
   try {
-    let resumeText  = '';
-    let uploadType  = 'text';
+    let resumeText = '';
+    let fileName   = 'Pasted Resume Text';
+    let fileType   = 'text';
+    let extractionInfo = null;
 
-    // ── 1. Extract text from PDF upload OR use body text ──────────
+    // ── 1. Document Extraction & Validation ─────────────────────────
     if (req.file) {
-      // PDF uploaded via multer
-      const parsed = await extractTextFromPDF(req.file.buffer);
-      resumeText   = parsed.text;
-      uploadType   = 'pdf';
-      console.log(`[Resume] PDF parsed — ${parsed.wordCount} words, ${parsed.pages} page(s).`);
+      const extracted = await extractDocumentText(req.file.buffer, req.file.originalname);
+      if (!extracted.success) {
+        return res.status(400).json({
+          success: false,
+          extractionStatus: extracted.extractionStatus,
+          message: extracted.error || 'Failed to extract text from the uploaded document.',
+        });
+      }
+
+      resumeText     = extracted.text;
+      fileName       = extracted.fileName;
+      fileType       = extracted.fileType;
+      extractionInfo = {
+        pageCount:     extracted.pageCount,
+        fileSizeBytes: extracted.fileSizeBytes,
+        charCount:     extracted.charCount,
+        wordCount:     extracted.wordCount,
+        status:        extracted.extractionStatus,
+      };
+      console.log(`[Resume] Document extracted — ${extracted.wordCount} words (${extracted.fileType}).`);
     } else if (req.body.resumeText) {
-      // Plain-text body (backward compatible)
-      resumeText = req.body.resumeText;
-      uploadType  = 'text';
+      const raw = (req.body.resumeText || '').trim();
+      if (raw.length < 50) {
+        return res.status(400).json({
+          success: false,
+          extractionStatus: 'empty',
+          message: 'Resume text is too brief (minimum 50 characters required for ATS evaluation).',
+        });
+      }
+
+      resumeText = raw;
+      const wordCount = resumeText.split(/\s+/).filter(Boolean).length;
+      extractionInfo = {
+        pageCount:     Math.max(1, Math.ceil(wordCount / 350)),
+        fileSizeBytes: Buffer.byteLength(resumeText, 'utf8'),
+        charCount:     resumeText.length,
+        wordCount,
+        status:        'success',
+      };
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Please upload a PDF file (field: resume) or provide resumeText in the request body.',
+        message: 'Please upload a PDF (.pdf), Word (.docx), or plain text (.txt) file, or paste your resume text.',
       });
     }
 
-    resumeText = resumeText.trim();
-    if (resumeText.length < 50) {
-      return res.status(400).json({
-        success: false,
-        message: 'Resume content is too short. Please provide your full resume (minimum 50 characters).',
-      });
-    }
+    const targetRole     = (req.body.targetRole || 'Software Engineer').trim();
+    const jobDescription = (req.body.jobDescription || req.body.jobDescriptionText || '').trim();
 
-    const targetRole = (req.body.targetRole || 'Software Engineer').trim();
+    // ── 2. Real Deterministic ATS-Style Scoring ─────────────────────
+    const evaluation = evaluateATSResume(resumeText, targetRole, jobDescription);
+    evaluation.fileName           = fileName;
+    evaluation.fileType           = fileType;
+    evaluation.extractionMetadata = extractionInfo;
 
-    // ── 2. Analyze ─────────────────────────────────────────────────
+    // ── 3. AI Qualitative Review (Optional Enhancement) ─────────────
     const apiKey = process.env.OPENROUTER_API_KEY;
-    let result;
-
     const hasValidKey = apiKey && apiKey.length > 20 && apiKey !== 'your_openrouter_api_key_here';
 
     if (hasValidKey) {
       try {
-        result = await aiResumeAnalysis(resumeText, targetRole, apiKey);
-        result.aiAnalyzed = true;
-        console.log('[Resume] AI analysis complete. ATS Score:', result.atsScore);
+        const aiReview = await aiQualitativeReview(resumeText, targetRole, jobDescription, evaluation, apiKey);
+        evaluation.aiAnalyzed = true;
+        if (aiReview.qualitativeSummary) {
+          evaluation.aiSummary = aiReview.qualitativeSummary;
+        }
+        if (Array.isArray(aiReview.bulletPointSuggestions) && aiReview.bulletPointSuggestions.length) {
+          evaluation.bulletPointSuggestions = aiReview.bulletPointSuggestions;
+        }
+        if (Array.isArray(aiReview.recommendedProjects) && aiReview.recommendedProjects.length) {
+          evaluation.recommendedProjects = aiReview.recommendedProjects;
+        }
+        if (Array.isArray(aiReview.strengths) && aiReview.strengths.length) {
+          evaluation.strengths = [...new Set([...evaluation.strengths, ...aiReview.strengths])].slice(0, 5);
+        }
+        console.log('[Resume] AI qualitative review merged successfully.');
       } catch (aiErr) {
-        console.warn('[Resume] AI analysis failed → rule-based fallback:', aiErr.message);
-        result = ruleBasedResumeAnalysis(resumeText, targetRole);
-        result.aiAnalyzed = false;
+        console.warn('[Resume] AI qualitative review failed (using deterministic output):', aiErr.message);
+        evaluation.aiAnalyzed = false;
+        evaluation.aiNote = 'AI qualitative suggestions unavailable; deterministic ATS evaluation completed.';
       }
     } else {
-      result = ruleBasedResumeAnalysis(resumeText, targetRole);
-      result.aiAnalyzed = false;
+      evaluation.aiAnalyzed = false;
     }
 
-    // ── 3. Persist to user profile ─────────────────────────────────
+    // ── 4. Persist Analysis to Database ─────────────────────────────
+    let analysisId = null;
     if (req.user?._id) {
       try {
-        if (req.userDoc) {
-          req.userDoc.resumeData.rawText      = resumeText.slice(0, 5000);
-          req.userDoc.resumeData.atsScore     = result.atsScore;
-          req.userDoc.resumeData.lastAnalyzed = new Date();
-          req.userDoc.dailyUsage.resumeChecks = (req.userDoc.dailyUsage.resumeChecks || 0) + 1;
-          await req.userDoc.save();
-        } else {
-          await User.findByIdAndUpdate(req.user._id, {
-            'resumeData.rawText':      resumeText.slice(0, 5000),
-            'resumeData.atsScore':     result.atsScore,
-            'resumeData.lastAnalyzed': new Date(),
-            $inc: { 'dailyUsage.resumeChecks': 1 },
-          });
-        }
+        const record = await ResumeAnalysis.create({
+          user:                 req.user._id,
+          fileName,
+          fileType,
+          targetRole,
+          jobDescription,
+          isJobSpecific:        evaluation.isJobSpecific,
+          atsScore:             evaluation.atsScore,
+          scoreLabel:           evaluation.scoreLabel,
+          summary:              evaluation.summary,
+          scoringDimensions:    evaluation.scoringDimensions,
+          skillsAnalysis:       evaluation.skillsAnalysis,
+          keywords:             evaluation.keywords,
+          sections:             evaluation.sections,
+          strengths:            evaluation.strengths,
+          improvements:         evaluation.improvements,
+          detailedImprovements: evaluation.detailedImprovements,
+          wordCount:            evaluation.wordCount,
+          aiAnalyzed:           evaluation.aiAnalyzed,
+          extractionMetadata:   extractionInfo,
+        });
+
+        analysisId = record._id;
+
+        // Update user profile summary
+        await User.findByIdAndUpdate(req.user._id, {
+          'resumeData.rawText':      resumeText.slice(0, 5000),
+          'resumeData.atsScore':     evaluation.atsScore,
+          'resumeData.lastAnalyzed': new Date(),
+          $inc: { 'dailyUsage.resumeChecks': 1 },
+        });
       } catch (dbErr) {
-        console.error('[Resume] Failed to update user profile:', dbErr.message);
+        console.error('[Resume] Database persistence error:', dbErr.message);
       }
     }
 
-    // ── 4. Respond ─────────────────────────────────────────────────
+    // ── 5. Respond ─────────────────────────────────────────────────
     res.json({
       success:    true,
-      uploadType,
+      analysisId,
+      uploadType: fileType,
       targetRole,
-      analysis:   result,
+      isJobSpecific: evaluation.isJobSpecific,
+      analysis:   evaluation,
     });
 
   } catch (err) {
     console.error('[analyzeResume] Error:', err.message);
-    res.status(err.status || 500).json({ success: false, message: err.message });
+    res.status(err.status || 500).json({
+      success: false,
+      message: err.message || 'An unexpected error occurred during resume analysis.',
+    });
   }
 };
 
@@ -313,6 +242,12 @@ const analyzeResume = async (req, res) => {
 
 const getLastAnalysis = async (req, res) => {
   try {
+    const lastDoc = await ResumeAnalysis.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+    if (lastDoc) {
+      return res.json({ success: true, analysis: lastDoc });
+    }
+
+    // Fallback to user document resumeData if no ResumeAnalysis record yet
     const user = await User.findById(req.user._id).select('resumeData');
     if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
@@ -323,4 +258,48 @@ const getLastAnalysis = async (req, res) => {
   }
 };
 
-module.exports = { analyzeResume, getLastAnalysis };
+/* ════════════════════════════════════════════════════════════════════
+   CONTROLLER: GET /api/resume/history
+   ════════════════════════════════════════════════════════════════════ */
+
+const getAnalysisHistory = async (req, res) => {
+  try {
+    const list = await ResumeAnalysis.find({ user: req.user._id })
+      .select('fileName fileType targetRole isJobSpecific atsScore scoreLabel summary createdAt')
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    res.json({ success: true, history: list });
+  } catch (err) {
+    console.error('[getAnalysisHistory] Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch analysis history.' });
+  }
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   CONTROLLER: GET /api/resume/:id
+   ════════════════════════════════════════════════════════════════════ */
+
+const getAnalysisById = async (req, res) => {
+  try {
+    const analysis = await ResumeAnalysis.findOne({ _id: req.params.id, user: req.user._id });
+    if (!analysis) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume analysis not found or you do not have permission to access it.',
+      });
+    }
+
+    res.json({ success: true, analysis });
+  } catch (err) {
+    console.error('[getAnalysisById] Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch resume analysis.' });
+  }
+};
+
+module.exports = {
+  analyzeResume,
+  getLastAnalysis,
+  getAnalysisHistory,
+  getAnalysisById,
+};

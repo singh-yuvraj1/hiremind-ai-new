@@ -370,9 +370,9 @@ Return this EXACT JSON structure:
 `.trim();
 
 
-const evaluateWithAI = async (qaList, jobRole, postureData = {}) => {
+const evaluateWithAI = async (qaList, jobRole) => {
   // 1. Try RAG evaluation first (always works, no API needed)
-  const ragResult = ragEvaluateSession(qaList, jobRole, postureData);
+  const ragResult = ragEvaluateSession(qaList, jobRole);
 
   // 2. Try AI evaluation if key is available
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -414,13 +414,15 @@ const evaluateWithAI = async (qaList, jobRole, postureData = {}) => {
 
     const parsed = JSON.parse(match[0]);
 
-    // Merge realistic webcam posture data from RAG processor
-    parsed.posture      = ragResult.posture    ?? Math.round((postureData?.posture ?? 30) * 0.8);
-    parsed.dressing     = ragResult.dressing   ?? 65;
     parsed.aiEvaluated  = true;
     parsed.ragEvaluated = false;
     parsed.technicalScore   = parsed.answerQuality ?? parsed.overallScore ?? 0;
     parsed.dynamicFeedback  = ragResult.dynamicFeedback ?? [];
+
+    // Overall score strictly calculated from actual Technical (70%) and Communication (30%)
+    const techScore = parsed.technicalScore;
+    const commScore = parsed.communication ?? 0;
+    parsed.overallScore = Math.round(techScore * 0.70 + commScore * 0.30);
 
     // Merge RAG concept data into per-question feedback
     if (Array.isArray(parsed.perQuestionFeedback) && Array.isArray(ragResult.perQuestionFeedback)) {
@@ -437,7 +439,7 @@ const evaluateWithAI = async (qaList, jobRole, postureData = {}) => {
     parsed.matchedConcepts = ragResult.matchedConcepts || [];
     parsed.missingConcepts = ragResult.missingConcepts || [];
 
-    ['overallScore', 'communication', 'answerQuality', 'posture'].forEach(k => {
+    ['overallScore', 'communication', 'answerQuality', 'technicalScore'].forEach(k => {
       if (typeof parsed[k] === 'number') {
         parsed[k] = Math.max(0, Math.min(100, Math.round(parsed[k])));
       }
@@ -470,7 +472,6 @@ const updateUserStats = async (userId, evaluation, userDoc = null) => {
     user.stats.avgScore         = wa('avgScore',        evaluation.overallScore  ?? 0);
     user.stats.avgCommunication = wa('avgCommunication', evaluation.communication ?? 0);
     user.stats.avgAnswerQuality = wa('avgAnswerQuality', evaluation.answerQuality ?? 0);
-    user.stats.avgPosture       = wa('avgPosture',       evaluation.posture       ?? 0);
     user.stats.bestScore        = Math.max(user.stats.bestScore || 0, evaluation.overallScore ?? 0);
     user.stats.lastPracticed    = new Date();
 
@@ -715,7 +716,7 @@ const saveInterviewSession = async (req, res) => {
     }));
 
     // ── RAG + AI Evaluation ──────────────────────────────────────────
-    const evaluation = await evaluateWithAI(qaList, jobRole, postureData);
+    const evaluation = await evaluateWithAI(qaList, jobRole);
 
     // ── Compute Adaptive Difficulty Trajectory ───────────────────────
     const adaptiveTrajectory = analyzeAdaptiveTrajectory(evaluation.perQuestionFeedback || []);
@@ -723,6 +724,12 @@ const saveInterviewSession = async (req, res) => {
 
     // Normalize tech list
     const techArray = normalizeTechList(technologies || technology);
+
+    // Calculated overall score strictly using Technical (70%) and Communication (30%)
+    const techScore = evaluation.technicalScore ?? evaluation.answerQuality ?? 50;
+    const commScore = evaluation.communication ?? 50;
+    const computedOverall = Math.round(techScore * 0.70 + commScore * 0.30);
+    evaluation.overallScore = computedOverall;
 
     // ── Persist session ──────────────────────────────────────────────
     const session = await InterviewSession.create({
@@ -736,12 +743,10 @@ const saveInterviewSession = async (req, res) => {
       aiCharacter,
       questions:  qaList,
       feedback: {
-        communication:    evaluation.communication    ?? 50,
-        answerQuality:    evaluation.answerQuality    ?? 50,
-        posture:          evaluation.posture          ?? 35,
-        dressing:         evaluation.dressing         ?? 65,
-        technicalScore:   evaluation.technicalScore   ?? evaluation.answerQuality ?? 50,
-        overallScore:     evaluation.overallScore     ?? 50,
+        communication:    commScore,
+        answerQuality:    evaluation.answerQuality    ?? techScore,
+        technicalScore:   techScore,
+        overallScore:     computedOverall,
         suggestions:      evaluation.suggestions      ?? [],
         strengths:        evaluation.strengths        ?? [],
         weaknesses:       evaluation.weaknesses       ?? [],

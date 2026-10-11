@@ -19,14 +19,6 @@ const resourceMap = {
     { title: 'LeetCode Practice',                  url: 'https://leetcode.com',  type: 'Practice' },
     { title: 'System Design Primer',               url: 'https://github.com',    type: 'GitHub' },
   ],
-  posture: [
-    { title: 'Body Language in Interviews',        url: '#',                     type: 'Article' },
-    { title: 'Professional Presence Online',       url: '#',                     type: 'Guide' },
-  ],
-  dressing: [
-    { title: 'Professional Dressing for Interviews', url: '#',                   type: 'Guide' },
-    { title: 'Interview Attire Tips',              url: '#',                     type: 'Article' },
-  ],
 };
 
 const scoreColor = v => v >= 70 ? '#22c55e' : v >= 50 ? '#3b82f6' : v >= 35 ? '#f59e0b' : '#ef4444';
@@ -65,29 +57,46 @@ export default function Feedback() {
     </div>
   );
 
-  const fb    = session.feedback || {};
-  const score = fb.overallScore || 0;
+  const fb             = session.feedback || {};
+  const technicalVal   = Number(fb.technicalScore ?? fb.answerQuality ?? 0);
+  const communicationVal = Number(fb.communication ?? 0);
+  // Calculate overall score strictly using Technical (70%) and Communication (30%)
+  const score = Math.round(technicalVal * 0.70 + communicationVal * 0.30);
   const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : score >= 35 ? 'D' : 'F';
   const gradeColor = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b', D: '#f97316', F: '#ef4444' }[grade];
 
   const rings = [
     { label: 'Overall',       val: score },
-    { label: 'Technical',     val: fb.technicalScore || fb.answerQuality || 0 },
-    { label: 'Communication', val: fb.communication  || 0 },
-    { label: 'Posture',       val: fb.posture        || 0 },
-    { label: 'Dressing',      val: fb.dressing       || 0 },
+    { label: 'Technical',     val: technicalVal },
+    { label: 'Communication', val: communicationVal },
   ];
 
   const radarData = [
-    { subject: 'Technical',     value: fb.technicalScore || fb.answerQuality || 0 },
-    { subject: 'Communication', value: fb.communication  || 0 },
-    { subject: 'Posture',       value: fb.posture        || 0 },
-    { subject: 'Dressing',      value: fb.dressing       || 0 },
+    { subject: 'Technical',     value: technicalVal },
+    { subject: 'Communication', value: communicationVal },
   ];
 
-  const weakAreas = ['communication', 'answerQuality', 'posture', 'dressing'].filter(
+  const weakAreas = ['communication', 'answerQuality'].filter(
     a => (fb[a] || 0) < 60
   );
+
+  const isNotPostureDressing = (text) => {
+    if (typeof text !== 'string') return true;
+    return !/posture|dressing/i.test(text);
+  };
+
+  const filteredStrengths  = (fb.strengths || []).filter(isNotPostureDressing);
+  const filteredWeaknesses = (fb.weaknesses || []).filter(isNotPostureDressing);
+  const rawFeedbackList    = (fb.dynamicFeedback?.length > 0 ? fb.dynamicFeedback : fb.suggestions || []);
+  const filteredFeedbackList = rawFeedbackList.filter(isNotPostureDressing);
+
+  const cleanSummary = (text) => {
+    if (!text) return 'No summary available.';
+    return text
+      .replace(/,\s*(?:and\s*)?(?:strong|poor|moderate)?\s*body\s*posture\.?/gi, '.')
+      .replace(/,\s*(?:and\s*)?sitting\s*upright\.?/gi, '.')
+      .replace(/\s+\./g, '.');
+  };
 
   const perQFeedback = fb.perQuestionFeedback || [];
   const fmtDate = new Date(session.createdAt).toLocaleDateString('en-US', {
@@ -156,10 +165,8 @@ export default function Feedback() {
         >
           <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>Score weights:</span>
           {[
-            ['Technical', '50%', '#3b82f6'],
-            ['Communication', '25%', '#a855f7'],
-            ['Posture', '15%', '#f97316'],
-            ['Dressing', '10%', '#ec4899'],
+            ['Technical', '70%', '#3b82f6'],
+            ['Communication', '30%', '#a855f7'],
           ].map(([label, pct, col]) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
@@ -233,25 +240,25 @@ export default function Feedback() {
                     margin: 0,
                   }}
                 >
-                  {fb.summary || 'No summary available.'}
+                  {cleanSummary(fb.summary)}
                 </p>
 
-                {fb.strengths?.length > 0 && (
+                {filteredStrengths.length > 0 && (
                   <div>
                     <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--success)', margin: '0 0 8px' }}>Strengths</p>
                     <ul style={{ margin: 0, paddingLeft: '1.125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {fb.strengths.map((s, i) => (
+                      {filteredStrengths.map((s, i) => (
                         <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--text-2)', lineHeight: 1.5 }}>{s}</li>
                       ))}
                     </ul>
                   </div>
                 )}
 
-                {fb.weaknesses?.length > 0 && (
+                {filteredWeaknesses.length > 0 && (
                   <div>
                     <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--warning)', margin: '0 0 8px' }}>Areas to Improve</p>
                     <ul style={{ margin: 0, paddingLeft: '1.125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {fb.weaknesses.map((s, i) => (
+                      {filteredWeaknesses.map((s, i) => (
                         <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--text-2)', lineHeight: 1.5 }}>{s}</li>
                       ))}
                     </ul>
@@ -398,7 +405,7 @@ export default function Feedback() {
               Smart feedback generated from your actual performance across all dimensions.
             </p>
 
-            {(fb.dynamicFeedback?.length > 0 ? fb.dynamicFeedback : fb.suggestions || []).map((msg, i) => {
+            {filteredFeedbackList.map((msg, i) => {
               const isGood = msg.startsWith('✅');
               const isWarn = msg.startsWith('⚠️');
               const type   = isGood ? 'success' : isWarn ? 'error' : 'info';

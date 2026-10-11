@@ -9,17 +9,25 @@ const multer = require('multer');
 /* ── In-memory storage (no temp files) ──────────────────── */
 const storage = multer.memoryStorage();
 
-/* ── File-type filter — PDF only ───────────────────────── */
-const pdfFilter = (req, file, cb) => {
-  const allowedMimes = ['application/pdf'];
-  const allowedExts  = ['.pdf'];
-  const ext = (file.originalname || '').toLowerCase().slice(-4);
+/* ── File-type filter — PDF, DOCX, TXT ─────────────────── */
+const documentFilter = (req, file, cb) => {
+  const allowedExts  = ['.pdf', '.docx', '.doc', '.txt'];
+  const ext = (file.originalname || '').toLowerCase().slice((file.originalname || '').lastIndexOf('.'));
 
-  if (allowedMimes.includes(file.mimetype) || allowedExts.includes(ext)) {
+  const allowedMimes = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'application/octet-stream',
+    'application/zip',
+    'text/plain',
+  ];
+
+  if (allowedExts.includes(ext) || allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
     cb(
-      Object.assign(new Error('Only PDF files are allowed.'), { status: 400 }),
+      Object.assign(new Error('Only PDF (.pdf), Word (.docx), or plain text (.txt) files are allowed.'), { status: 400 }),
       false
     );
   }
@@ -28,15 +36,16 @@ const pdfFilter = (req, file, cb) => {
 /* ── Resume upload — 5 MB max ───────────────────────────── */
 const uploadResume = multer({
   storage,
-  fileFilter: pdfFilter,
+  fileFilter: documentFilter,
   limits: {
     fileSize:  5 * 1024 * 1024, // 5 MB
     files:     1,
   },
 });
 
-/* ── Generic single-PDF upload helper ───────────────────── */
-const uploadSinglePDF = (fieldName = 'resume') => uploadResume.single(fieldName);
+/* ── Document upload helpers ────────────────────────────── */
+const uploadSingleDocument = (fieldName = 'resume') => uploadResume.single(fieldName);
+const uploadSinglePDF      = (fieldName = 'resume') => uploadResume.single(fieldName);
 
 /* ── Multer error handler middleware ────────────────────── */
 const handleMulterError = (err, req, res, next) => {
@@ -52,4 +61,4 @@ const handleMulterError = (err, req, res, next) => {
   next(err);
 };
 
-module.exports = { uploadSinglePDF, handleMulterError };
+module.exports = { uploadSinglePDF, uploadSingleDocument, handleMulterError };

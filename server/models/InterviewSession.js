@@ -26,8 +26,8 @@ const interviewSessionSchema = new mongoose.Schema({
   feedback: {
     communication:   { type: Number, default: 0 },
     answerQuality:   { type: Number, default: 0 },
-    posture:         { type: Number, default: 0 },
-    dressing:        { type: Number, default: 0 },
+    posture:         { type: Number },
+    dressing:        { type: Number },
     technicalScore:  { type: Number, default: 0 },
     overallScore:    { type: Number, default: 0 },
     suggestions:     [String],

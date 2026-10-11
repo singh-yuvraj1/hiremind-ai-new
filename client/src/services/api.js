@@ -106,6 +106,8 @@ export const resumeAPI = {
     return api.post('/resume/analyze', data);
   },
   getLast: () => api.get('/resume/last'),
+  getHistory: () => api.get('/resume/history'),
+  getOne: (id) => api.get(`/resume/${id}`),
 };
 
 /* ── Payment API ─────────────────────────────────────────────────── */

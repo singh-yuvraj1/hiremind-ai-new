@@ -561,7 +561,7 @@ const scoreCommunication = (qaList) => {
    Based on: answer completeness, non-empty ratio, definitive language.
    ══════════════════════════════════════════════════════════════════ */
 
-const scoreConfidence = (qaList, postureConfidence) => {
+const scoreConfidence = (qaList) => {
   const answeredCount  = qaList.filter(q => (q.answer || '').trim().length > 5).length;
   const completionRate = qaList.length ? answeredCount / qaList.length : 0;
 
@@ -575,43 +575,7 @@ const scoreConfidence = (qaList, postureConfidence) => {
     if (/i'm not sure|i don't know|i guess|maybe|perhaps|not certain/.test(aLow)) answerConfidence -= 3;
   }
 
-  answerConfidence = Math.max(20, Math.min(85, Math.round(answerConfidence)));
-
-  // If webcam was active, blend webcam confidence (30%) with answer confidence (70%)
-  if (postureConfidence && postureConfidence > 0) {
-    return Math.round(answerConfidence * 0.7 + postureConfidence * 0.3);
-  }
-  return answerConfidence;
-};
-
-/* ══════════════════════════════════════════════════════════════════
-   WEBCAM METRIC PROCESSOR
-   Treats camera-off as genuinely low (not default 60).
-   Adds realistic variance within controlled bands.
-   ══════════════════════════════════════════════════════════════════ */
-
-const processWebcamMetrics = (postureData) => {
-  const cameraWasActive = postureData && postureData.posture > 0;
-
-  if (!cameraWasActive) {
-    // Camera off or denied — penalise posture; dressing gets a neutral default
-    return {
-      posture:  30 + Math.floor(Math.random() * 10), // 30–39
-      dressing: 60 + Math.floor(Math.random() * 15), // 60–74
-    };
-  }
-
-  // Camera active — use real posture value with small smoothing jitter
-  const addVariance = (val, range = 5) => {
-    const jitter = Math.floor(Math.random() * range) - Math.floor(range / 2);
-    return Math.max(0, Math.min(100, Math.round(val + jitter)));
-  };
-
-  return {
-    posture:  addVariance(postureData.posture ?? 55, 4),
-    // Dressing: not assessable from pose landmarks — neutral controlled range
-    dressing: 60 + Math.floor(Math.random() * 26), // 60–85
-  };
+  return Math.max(20, Math.min(85, Math.round(answerConfidence)));
 };
 
 /* ══════════════════════════════════════════════════════════════════
@@ -619,7 +583,7 @@ const processWebcamMetrics = (postureData) => {
    Generates contextual messages based on which dimension is weak.
    ══════════════════════════════════════════════════════════════════ */
 
-const generateDynamicFeedback = ({ technical, communication, posture }) => {
+const generateDynamicFeedback = ({ technical, communication }) => {
   const messages = [];
 
   if (technical < 45) {
@@ -638,30 +602,20 @@ const generateDynamicFeedback = ({ technical, communication, posture }) => {
     messages.push('✅ Communication: Clear and well-structured responses.');
   }
 
-  if (posture < 45) {
-    messages.push('🪑 Posture: Poor body posture detected. Sit upright, keep your shoulders level and aligned, and avoid slouching or leaning forward.');
-  } else if (posture < 65) {
-    messages.push('🧍 Posture: Moderate posture detected. Try to sit straighter, keep your back supported, and centre yourself in the camera frame.');
-  } else {
-    messages.push('✅ Posture: Good upright posture maintained throughout the interview.');
-  }
-
   return messages;
 };
 
 /* ══════════════════════════════════════════════════════════════════
    BATCH EVALUATOR — evaluates full interview session
-   WEIGHTED SCORING: Technical 40% | Communication 25% | Confidence 15%
-                     Eye Contact 10% | Posture 5% | Dressing 5%
+   WEIGHTED SCORING: Technical 70% | Communication 30% (Total: 100%)
    ══════════════════════════════════════════════════════════════════ */
 
 /**
  * @param {Array<{question: string, answer: string}>} qaList
  * @param {string} jobRole
- * @param {{ confidence?: number, posture?: number, eyeContact?: number }} postureData
  * @returns {object} Full evaluation result compatible with existing schema
  */
-const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
+const ragEvaluateSession = (qaList, jobRole = 'General') => {
   const perQ = qaList.map(item => evaluateAnswer(item.question, item.answer, item));
 
   // Convert 0-10 scores to 0-100
@@ -678,16 +632,11 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
   // ── Communication Score (structural signals from answers) ──────────
   const communicationScore = scoreCommunication(qaList);
 
-  // ── Webcam Metrics (posture only — not faked) ──────────────────────
-  const webcam = processWebcamMetrics(postureData);
-
   // ── Weighted Overall Score ─────────────────────────────────────────
-  // Technical 50% | Communication 25% | Posture 15% | Dressing 10%
+  // Technical 70% | Communication 30% (Weights total 100%)
   const overallScore = Math.round(
-    technicalScore     * 0.50 +
-    communicationScore * 0.25 +
-    webcam.posture     * 0.15 +
-    webcam.dressing    * 0.10
+    technicalScore     * 0.70 +
+    communicationScore * 0.30
   );
 
   // ── Aggregate concepts ─────────────────────────────────────────────
@@ -712,21 +661,19 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
     ? [`Missing key concepts: ${allMissing.slice(0, 3).join(', ')}`]
     : [];
   if (communicationScore < 50) weaknesses.push('Answers lack structure and clarity');
-  if (webcam.posture < 50)    weaknesses.push('Body posture needs improvement — sit upright and keep shoulders aligned');
 
   // ── Dynamic feedback messages ──────────────────────────────────────
   const dynamicFeedback = generateDynamicFeedback({
     technical:     technicalScore,
     communication: communicationScore,
-    posture:       webcam.posture,
   });
 
   const summaryText = overallScore >= 80
-    ? `Outstanding performance (${overallScore}/100)! Excellent technical depth, clear communication, and strong body posture.`
+    ? `Outstanding performance (${overallScore}/100)! Excellent technical depth and clear communication.`
     : overallScore >= 65
       ? `Good performance (${overallScore}/100). Solid understanding with room to improve answer structure and depth.`
       : overallScore >= 45
-        ? `Decent attempt (${overallScore}/100). Focus on key concepts, clearer answer structure, and sitting upright.`
+        ? `Decent attempt (${overallScore}/100). Focus on key concepts and clearer answer structure.`
         : `Keep practising (${overallScore}/100). Review fundamentals, use the STAR method, and practice mock interviews regularly.`;
 
   return {
@@ -734,8 +681,6 @@ const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
     technicalScore,
     communication:  communicationScore,
     answerQuality:  technicalScore,
-    posture:        webcam.posture,
-    dressing:       webcam.dressing,
     strengths,
     weaknesses,
     suggestions:    [...allSuggestions, ...dynamicFeedback].slice(0, 8),

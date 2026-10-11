@@ -480,7 +480,7 @@ function StatsCard({ stats }) {
     { label: 'Mock Tests',   value: stats.totalMockTests  || 0,         icon: '📝' },
     { label: 'Avg Score',    value: `${Math.round(stats.avgScore || 0)}%`, icon: '📊' },
     { label: 'Best Score',   value: `${Math.round(stats.bestScore || 0)}%`, icon: '🏆' },
-    { label: 'Avg Posture',  value: `${Math.round(stats.avgPosture || 0)}%`, icon: '🧘' },
+    { label: 'Avg Technical',  value: `${Math.round(stats.avgAnswerQuality || 0)}%`, icon: '💻' },
     { label: 'Avg Confidence', value: `${Math.round(stats.avgConfidence || 0)}%`, icon: '💪' },
   ];
 
