@@ -1,66 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 export default function Signup() {
   const [form,    setForm]    = useState({ name: '', email: '', password: '', confirm: '' });
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
-  const { register, googleLogin } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
-
-    let intervalId;
-    let isMounted = true;
-
-    const initGoogle = () => {
-      const btnEl = document.getElementById('google-btn-signup');
-      if (window.google?.accounts?.id && btnEl && isMounted) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: async (res) => {
-              if (!res.credential || !isMounted) return;
-              try {
-                setLoading(true);
-                setError('');
-                await googleLogin(res.credential);
-                navigate('/dashboard');
-              } catch (err) {
-                if (isMounted) {
-                  setError(err.response?.data?.message || 'Google sign up failed. Please try again.');
-                }
-              } finally {
-                if (isMounted) setLoading(false);
-              }
-            },
-          });
-          btnEl.innerHTML = '';
-          window.google.accounts.id.renderButton(
-            btnEl,
-            { theme: 'outline', size: 'large', width: '100%', text: 'signup_with', shape: 'rectangular' }
-          );
-          if (intervalId) clearInterval(intervalId);
-        } catch (err) {
-          console.error('[Google Signup Button Render Error]:', err);
-        }
-      }
-    };
-
-    initGoogle();
-    if (!window.google?.accounts?.id || !document.getElementById('google-btn-signup')) {
-      intervalId = setInterval(initGoogle, 150);
-    }
-    return () => {
-      isMounted = false;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [googleLogin, navigate]);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -213,7 +163,10 @@ export default function Signup() {
             <div className="divider flex-1" />
           </div>
 
-          <div id="google-btn-signup" style={{ display: 'flex', justifyContent: 'center' }} />
+          <GoogleAuthButton
+            mode="signup"
+            onError={(msg) => setError(msg)}
+          />
 
           <p style={{ textAlign: 'center', fontSize: '0.875rem', color: 'var(--muted)', marginTop: '1.5rem' }}>
             Already have an account?{' '}

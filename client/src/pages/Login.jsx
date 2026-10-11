@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 export default function Login() {
   const [email,   setEmail]   = useState('');
@@ -10,59 +11,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
 
-  const { login, googleLogin } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) return;
-
-    let intervalId;
-    let isMounted = true;
-
-    const initGoogle = () => {
-      const btnEl = document.getElementById('google-btn');
-      if (window.google?.accounts?.id && btnEl && isMounted) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: async (res) => {
-              if (!res.credential || !isMounted) return;
-              try {
-                setLoading(true);
-                setError('');
-                await googleLogin(res.credential);
-                navigate('/dashboard');
-              } catch (err) {
-                if (isMounted) {
-                  setError(err.response?.data?.message || 'Google sign in failed. Please try again.');
-                }
-              } finally {
-                if (isMounted) setLoading(false);
-              }
-            },
-          });
-          btnEl.innerHTML = '';
-          window.google.accounts.id.renderButton(
-            btnEl,
-            { theme: 'outline', size: 'large', width: '100%', shape: 'rectangular', text: 'signin_with' }
-          );
-          if (intervalId) clearInterval(intervalId);
-        } catch (err) {
-          console.error('[Google Button Render Error]:', err);
-        }
-      }
-    };
-
-    initGoogle();
-    if (!window.google?.accounts?.id || !document.getElementById('google-btn')) {
-      intervalId = setInterval(initGoogle, 150);
-    }
-    return () => {
-      isMounted = false;
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [googleLogin, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -250,7 +200,10 @@ export default function Login() {
             <div className="divider flex-1" />
           </div>
 
-          <div id="google-btn" style={{ display: 'flex', justifyContent: 'center' }} />
+          <GoogleAuthButton
+            mode="signin"
+            onError={(msg) => setError(msg)}
+          />
 
           <p style={{ textAlign: 'center', fontSize: '0.875rem', color: 'var(--muted)', marginTop: '1.5rem' }}>
             Don't have an account?{' '}

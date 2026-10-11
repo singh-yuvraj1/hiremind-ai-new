@@ -565,3 +565,33 @@ input[type="range"]::-webkit-slider-thumb {
 @media (max-width: 1024px) {
   :root { --sidebar-w: 0px; }
 }
+
+/* ── Google Authentication Button ────────────────────────────── */
+.google-auth-btn-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  height: 44px;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.google-auth-btn-wrapper:hover .google-custom-btn {
+  background-color: #f8f9fa !important;
+  border-color: #c6c9cc !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+}
+
+.google-auth-btn-wrapper:active .google-custom-btn {
+  background-color: #f1f3f4 !important;
+}
+
+.google-gis-overlay iframe {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 100% !important;
+  min-height: 100% !important;
+  transform: scale(1.08) !important;
+  transform-origin: center center !important;
+  cursor: pointer !important;
+}
