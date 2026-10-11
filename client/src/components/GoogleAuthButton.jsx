@@ -12,9 +12,8 @@ import { useAuth } from '../context/AuthContext';
  * - Login: "Sign in with Google"
  * - Signup: "Sign up with Google"
  * 
- * Avoids browser-personalized labels like "Sign in as [Name]" while preserving
- * the full Google Identity Services authentication flow, credential verification,
- * and backend integration.
+ * Connected to existing Google Identity Services authentication flow,
+ * receiving Google ID credential and authenticating via googleLogin().
  *
  * @param {'signin' | 'signup'} [props.mode='signin']
  * @param {(err: string) => void} [props.onError]
@@ -27,6 +26,7 @@ export default function GoogleAuthButton({
 }) {
   const [loading, setLoading] = useState(false);
   const overlayRef = useRef(null);
+  const initializedRef = useRef(false);
   const { googleLogin } = useAuth();
   const navigate = useNavigate();
 
@@ -45,12 +45,20 @@ export default function GoogleAuthButton({
       return;
     }
 
-    let intervalId;
+    let intervalId = null;
     let isMounted = true;
 
     const initGoogle = () => {
+      if (initializedRef.current) return;
       const container = overlayRef.current;
+
       if (window.google?.accounts?.id && container && isMounted) {
+        initializedRef.current = true;
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+
         try {
           window.google.accounts.id.initialize({
             client_id: clientId,
@@ -86,16 +94,15 @@ export default function GoogleAuthButton({
             text: isSignup ? 'signup_with' : 'signin_with',
             logo_alignment: 'left',
           });
-
-          if (intervalId) clearInterval(intervalId);
         } catch (err) {
           console.error('[GoogleAuthButton Render Error]:', err);
+          initializedRef.current = false;
         }
       }
     };
 
     initGoogle();
-    if (!window.google?.accounts?.id || !overlayRef.current?.hasChildNodes()) {
+    if (!initializedRef.current) {
       intervalId = setInterval(initGoogle, 150);
     }
 
@@ -105,7 +112,7 @@ export default function GoogleAuthButton({
     };
   }, [googleLogin, navigate, isSignup]);
 
-  const handleClickFallback = () => {
+  const handleButtonClick = () => {
     if (loading) return;
     if (window.google?.accounts?.id) {
       window.google.accounts.id.prompt();
@@ -115,7 +122,7 @@ export default function GoogleAuthButton({
   return (
     <div
       className="google-auth-btn-wrapper"
-      onClick={handleClickFallback}
+      onClick={handleButtonClick}
       style={{
         position: 'relative',
         width: '100%',
@@ -125,6 +132,7 @@ export default function GoogleAuthButton({
         borderRadius: 8,
         overflow: 'hidden',
         boxSizing: 'border-box',
+        cursor: loading ? 'not-allowed' : 'pointer',
       }}
     >
       {/* ── Visual Layer: Strictly branded Google button with exact text ── */}
@@ -154,7 +162,6 @@ export default function GoogleAuthButton({
           transition: 'all 0.15s ease',
           userSelect: 'none',
           outline: 'none',
-          pointerEvents: 'none', // All click events pass to the Google GIS layer
         }}
       >
         {loading ? (
