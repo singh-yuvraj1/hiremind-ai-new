@@ -333,12 +333,18 @@ const pickQuestions = (role, technology, category, difficulty, count, techList =
 const AI_EVAL_PROMPT = (qaList, jobRole) => `
 You are an expert technical interviewer evaluating a candidate for a "${jobRole}" role.
 
-Evaluate each answer below on a scale of 0–100 and return ONLY a single valid JSON object. No markdown, no explanation outside the JSON.
+For each question, evaluate the candidate's answer against the retrieved reference answer, expected key concepts, and rubric criteria.
+Rate technical correctness, completeness, and clarity on a scale of 0-100.
+If an answer is blank, trivial, or completely incorrect, award 0.
 
-INTERVIEW TRANSCRIPT:
+INTERVIEW QUESTIONS & CANDIDATE TRANSCRIPT:
 ${qaList.map((q, i) => `
-Q${i + 1}: ${q.question}
+---
+Question ${i + 1}: ${q.question}
+Expected Key Concepts: ${q.keyConcepts?.length ? q.keyConcepts.join(', ') : 'Relevant technical concepts for this domain'}
+Retrieved Reference Answer: ${q.referenceAnswer || 'Comprehensive industry standard explanation'}
 Candidate Answer: ${q.answer || '(no answer provided)'}
+---
 `).join('\n')}
 
 Return this EXACT JSON structure:
@@ -354,7 +360,7 @@ Return this EXACT JSON structure:
     ${qaList.map((_, i) => `{
       "questionIndex": ${i},
       "score": <0-100>,
-      "feedback": "<specific feedback for Q${i + 1}>",
+      "feedback": "<specific constructive feedback for Q${i + 1}>",
       "matchedConcepts": ["<concept>"],
       "missingConcepts": ["<concept>"],
       "suggestions": ["<improvement>"]
@@ -688,9 +694,24 @@ const saveInterviewSession = async (req, res) => {
       return res.status(400).json({ success: false, message: 'At least one question is required.' });
     }
 
-    const qaList = questions.map((q, i) => ({
-      question: typeof q === 'string' ? q : q.question || '',
-      answer:   (answers[i] || '').toString().trim(),
+    const qaList = await Promise.all(questions.map(async (q, i) => {
+      const qText = typeof q === 'string' ? q : q.question || '';
+      let qDoc = await Question.findOne({ question: qText }).lean();
+      if (!qDoc) {
+        try {
+          const { SEED_QUESTIONS } = require('../seed/questionsSeed');
+          qDoc = SEED_QUESTIONS.find(sq => sq.question === qText);
+        } catch {}
+      }
+      return {
+        question:        qText,
+        answer:          (answers[i] || '').toString().trim(),
+        referenceAnswer: qDoc?.referenceAnswer || '',
+        keyConcepts:     qDoc?.keyConcepts || [],
+        rubric:          qDoc?.rubric || [],
+        topic:           qDoc?.topic || '',
+        difficulty:      qDoc?.difficulty || difficulty || 'medium',
+      };
     }));
 
     // ── RAG + AI Evaluation ──────────────────────────────────────────

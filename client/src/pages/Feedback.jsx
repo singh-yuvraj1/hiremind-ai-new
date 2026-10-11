@@ -65,7 +65,7 @@ export default function Feedback() {
     </div>
   );
 
-  const fb    = session.feedback;
+  const fb    = session.feedback || {};
   const score = fb.overallScore || 0;
   const grade = score >= 85 ? 'A' : score >= 70 ? 'B' : score >= 55 ? 'C' : score >= 35 ? 'D' : 'F';
   const gradeColor = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b', D: '#f97316', F: '#ef4444' }[grade];
@@ -264,9 +264,9 @@ export default function Feedback() {
             <div className="card" style={{ padding: '1.25rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                 {[
-                  { label: 'Questions',  val: session.questions.length },
-                  { label: 'Duration',   val: `${Math.floor(session.duration / 60)}m ${session.duration % 60}s` },
-                  { label: 'Difficulty', val: session.difficulty },
+                  { label: 'Questions',  val: (session.questions || []).length },
+                  { label: 'Duration',   val: `${Math.floor((session.duration || 0) / 60)}m ${(session.duration || 0) % 60}s` },
+                  { label: 'Difficulty', val: session.difficulty || 'medium' },
                 ].map(m => (
                   <div key={m.label} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.03em', marginBottom: 4, textTransform: 'capitalize' }}>
@@ -287,13 +287,15 @@ export default function Feedback() {
         {/* ── QUESTIONS ── */}
         {tab === 'questions' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            {session.questions.map((q, i) => {
+            {(session.questions || []).map((q, i) => {
               const pqf    = perQFeedback[i];
               const qScore = pqf?.score ?? null;
               const qColor = qScore !== null ? scoreColor(qScore) : 'var(--muted)';
               const qLabel = qScore !== null
                 ? (qScore >= 70 ? 'Strong' : qScore >= 50 ? 'Decent' : qScore >= 25 ? 'Weak' : 'Missed')
                 : 'Unscored';
+              const qText = typeof q === 'string' ? q : (q?.question || '');
+              const aText = typeof q === 'string' ? (session.answers && session.answers[i]) : (q?.answer || (session.answers && session.answers[i]) || '');
 
               return (
                 <div key={i} className="card" style={{ padding: '1.25rem' }}>
@@ -316,7 +318,7 @@ export default function Feedback() {
                       {i + 1}
                     </div>
                     <p style={{ fontSize: '0.9375rem', fontWeight: 500, color: 'var(--text)', margin: 0, lineHeight: 1.55 }}>
-                      {q.question}
+                      {qText}
                     </p>
                   </div>
                   <div style={{ paddingLeft: 40 }}>
@@ -350,11 +352,11 @@ export default function Feedback() {
                         borderRadius: 8,
                         background: 'var(--surface2)',
                         margin: 0,
-                        fontStyle: q.answer?.trim() ? 'normal' : 'italic',
-                        opacity: q.answer?.trim() ? 1 : 0.6,
+                        fontStyle: aText?.trim() ? 'normal' : 'italic',
+                        opacity: aText?.trim() ? 1 : 0.6,
                       }}
                     >
-                      {q.answer?.trim() || 'No answer given'}
+                      {aText?.trim() || 'No answer given'}
                     </p>
                     {pqf?.feedback && (
                       <p

@@ -906,24 +906,33 @@ const SEED_QUESTIONS = [
   },
 ];
 
-async function seedQuestionBank() {
+let ADDITIONAL_QUESTIONS = [];
+try {
+  ADDITIONAL_QUESTIONS = require('./additionalQuestions').ADDITIONAL_QUESTIONS || [];
+} catch (e) {
+  console.warn('[questionsSeed] Could not load additionalQuestions:', e.message);
+}
+
+const ALL_SEED_QUESTIONS = [...SEED_QUESTIONS, ...ADDITIONAL_QUESTIONS];
+
+async function seedQuestionBank(existingConn = null) {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('  HIREMIND AI — SEEDING ROLE-BASED QUESTION BANK');
   console.log('═══════════════════════════════════════════════════════════════\n');
 
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/hiremind';
-  console.log(`Connecting to MongoDB: ${uri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/hiremind';
+
+  let shouldDisconnect = false;
+  if (!mongoose.connection.readyState) {
+    console.log(`Connecting to MongoDB: ${uri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+    await mongoose.connect(uri);
+    shouldDisconnect = true;
+  }
 
   try {
-    await mongoose.connect(uri);
-    console.log('✅ Connected to MongoDB successfully.\n');
+    let upserted = 0;
 
-    // Clean refresh of questions bank
-    await Question.deleteMany({});
-
-    let inserted = 0;
-
-    for (const qData of SEED_QUESTIONS) {
+    for (const qData of ALL_SEED_QUESTIONS) {
       const doc = {
         ...qData,
         fieldId:   qData.fieldId || 'software_development',
@@ -934,26 +943,31 @@ async function seedQuestionBank() {
         isActive:  true,
       };
 
-      await Question.create(doc);
-      inserted++;
+      await Question.updateOne(
+        { question: doc.question },
+        { $set: doc },
+        { upsert: true }
+      );
+      upserted++;
     }
 
     const totalCount = await Question.countDocuments();
-    console.log(`✅ Seeding Complete!`);
-    console.log(`   • Newly Inserted : ${inserted}`);
-    console.log(`   • Total Questions: ${totalCount}\n`);
+    console.log(`✅ Question Seeding Verified: ${upserted} processed, ${totalCount} active in DB.\n`);
+    return { success: true, processed: upserted, total: totalCount };
 
   } catch (err) {
-    console.error('❌ Question seeding failed:', err);
-    process.exit(1);
+    console.error('❌ Question seeding error:', err.message);
+    throw err;
   } finally {
-    await mongoose.disconnect();
-    console.log('MongoDB connection closed.');
+    if (shouldDisconnect) {
+      await mongoose.disconnect();
+      console.log('MongoDB connection closed.');
+    }
   }
 }
 
 if (require.main === module) {
-  seedQuestionBank();
+  seedQuestionBank().catch(e => { console.error(e); process.exit(1); });
 }
 
-module.exports = { SEED_QUESTIONS, seedQuestionBank };
+module.exports = { SEED_QUESTIONS: ALL_SEED_QUESTIONS, seedQuestionBank };

@@ -355,59 +355,72 @@ const findBestMatch = (question) => {
  *   ragUsed: boolean
  * }}
  */
-const evaluateAnswer = (question, answer) => {
+const evaluateAnswer = (question, answer, context = null) => {
   const ans = (answer || '').trim();
   const wc  = ans.split(/\s+/).filter(Boolean).length;
 
   // Handle empty / very short answers
   if (wc === 0) {
+    const expected = context?.keyConcepts || ['Technical concepts for topic'];
     return {
       score: 0,
       matchedConcepts: [],
-      missingConcepts: ['No answer provided'],
-      suggestions: ['Please provide a meaningful answer to this question'],
-      feedback: 'No answer provided.',
-      ragUsed: false,
+      missingConcepts: expected.slice(0, 4),
+      suggestions: ['Please provide a meaningful answer to this question', 'Include relevant technical terminology and examples'],
+      feedback: 'No answer provided. Please attempt the question to receive a score.',
+      ragUsed: true,
     };
   }
   if (wc < 5) {
+    const expected = context?.keyConcepts || ['Detailed explanation', 'Concrete example', 'Technical depth'];
     return {
       score: 1,
       matchedConcepts: [],
-      missingConcepts: ['Detailed explanation', 'Concrete example', 'Technical depth'],
+      missingConcepts: expected.slice(0, 4),
       suggestions: ['Write at least 3–4 complete sentences', 'Use the STAR method for behavioral questions'],
-      feedback: 'Answer is far too brief.',
-      ragUsed: false,
+      feedback: 'Answer is far too brief to evaluate properly.',
+      ragUsed: true,
     };
   }
 
-  // Find KB entry for this question
-  const kbEntry = findBestMatch(question);
+  // Determine ground truth context (context passed from Question DB or built-in KB)
+  let targetConcepts = context?.keyConcepts?.length ? context.keyConcepts : null;
+  let targetIdealAnswer = context?.referenceAnswer || '';
+  let targetSuggestions = [];
 
-  if (kbEntry) {
-    // RAG-based evaluation
+  if (!targetConcepts || !targetConcepts.length) {
+    const kbEntry = findBestMatch(question);
+    if (kbEntry) {
+      targetConcepts = kbEntry.concepts;
+      targetIdealAnswer = kbEntry.idealAnswer;
+      targetSuggestions = kbEntry.suggestions || [];
+    }
+  }
+
+  if (targetConcepts && targetConcepts.length > 0) {
+    // RAG-based evaluation using ground truth context
     const ansFreq    = tokenize(ans);
-    const idealFreq  = tokenize(kbEntry.idealAnswer + ' ' + kbEntry.concepts.join(' '));
+    const idealFreq  = tokenize((targetIdealAnswer || '') + ' ' + targetConcepts.join(' '));
     const similarity = cosineSimilarity(ansFreq, idealFreq);
 
-    // Concept matching
+    // Concept matching against retrieved expected concepts
     const ansLow = ans.toLowerCase();
-    const matchedConcepts = kbEntry.concepts.filter(c =>
+    const matchedConcepts = targetConcepts.filter(c =>
       ansLow.includes(c.toLowerCase()) ||
-      c.toLowerCase().split(' ').some(w => ansLow.includes(w))
+      c.toLowerCase().split(' ').some(w => w.length > 3 && ansLow.includes(w))
     );
-    const missingConcepts = kbEntry.concepts.filter(c => !matchedConcepts.includes(c));
+    const missingConcepts = targetConcepts.filter(c => !matchedConcepts.includes(c));
 
     // Score calculation (0–10 scale)
-    let score = similarity * 6; // similarity contributes up to 6 points
+    let score = similarity * 5.5; // semantic cosine similarity contributes up to 5.5 points
 
-    // Concept coverage bonus (up to 3 points)
-    const coverageRatio = matchedConcepts.length / kbEntry.concepts.length;
-    score += coverageRatio * 3;
+    // Concept coverage bonus (up to 3.5 points)
+    const coverageRatio = matchedConcepts.length / targetConcepts.length;
+    score += coverageRatio * 3.5;
 
     // Length bonus (up to 1 point)
-    if (wc >= 50) score += 0.5;
-    if (wc >= 100) score += 0.5;
+    if (wc >= 40) score += 0.5;
+    if (wc >= 80) score += 0.5;
 
     // Example / structure bonus
     const hasExample = /for example|for instance|such as|in my|when i|once i|we (built|implemented|used)|at my/.test(ansLow);
@@ -421,14 +434,17 @@ const evaluateAnswer = (question, answer) => {
       score,
       matchedConcepts: matchedConcepts.slice(0, 6),
       missingConcepts: missingConcepts.slice(0, 4),
-      suggestions: kbEntry.suggestions,
+      suggestions: targetSuggestions.length ? targetSuggestions : [
+        'Include practical code examples or concrete architectural details',
+        'Demonstrate understanding of tradeoffs and failure modes',
+      ],
       feedback: score >= 8
-        ? 'Excellent! Covers key concepts with strong technical depth.'
+        ? 'Excellent! Accurately covers key concepts with strong technical depth.'
         : score >= 6
-          ? 'Good answer. Covers core concepts but could go deeper.'
+          ? 'Good answer. Covers core concepts but could go deeper with specific implementation details.'
           : score >= 4
-            ? 'Partial coverage. Missing some key concepts for this topic.'
-            : 'Needs improvement. Review the fundamental concepts for this question.',
+            ? 'Partial coverage. Missing some essential concepts for this topic.'
+            : 'Needs improvement. Key concepts were missing or incomplete.',
       ragUsed: true,
     };
   }
@@ -646,7 +662,7 @@ const generateDynamicFeedback = ({ technical, communication, posture }) => {
  * @returns {object} Full evaluation result compatible with existing schema
  */
 const ragEvaluateSession = (qaList, jobRole = 'General', postureData = {}) => {
-  const perQ = qaList.map(({ question, answer }) => evaluateAnswer(question, answer));
+  const perQ = qaList.map(item => evaluateAnswer(item.question, item.answer, item));
 
   // Convert 0-10 scores to 0-100
   const perQ100 = perQ.map(q => ({

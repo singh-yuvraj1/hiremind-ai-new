@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Component } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
@@ -312,6 +312,75 @@ const analyzeFrame = async (video) => {
     return { posture: 0, eyeContact: 0, confidence: 0, faceDetected: false, multipleFaces: false };
   }
 };
+
+/* ─────────────────────────────────────────────────────────────────── */
+/*  POSTURE STATUS FORMATTER                                           */
+/* ─────────────────────────────────────────────────────────────────── */
+const getPostureStatus = (score) => {
+  if (score === null || score === undefined) {
+    return { label: 'Analyzing posture...', color: 'var(--muted)', tips: ['Sit upright facing the camera'] };
+  }
+  if (score >= 80) {
+    return { label: 'Excellent Posture', color: '#22c55e', tips: ['Great posture and alignment maintained.'] };
+  }
+  if (score >= 60) {
+    return { label: 'Good Posture', color: '#3b82f6', tips: ['Good alignment. Keep shoulders level.'] };
+  }
+  if (score >= 40) {
+    return { label: 'Fair Posture', color: '#f59e0b', tips: ['Try sitting slightly more upright and centered in frame.'] };
+  }
+  return { label: 'Needs Improvement', color: '#ef4444', tips: ['Please sit upright and look directly at the camera.'] };
+};
+
+/* ─────────────────────────────────────────────────────────────────── */
+/*  ERROR BOUNDARY (Guards against blank screens)                      */
+/* ─────────────────────────────────────────────────────────────────── */
+class InterviewErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('[InterviewErrorBoundary caught error]:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen t-bg flex items-center justify-center p-4" style={{ fontFamily: 'Inter, sans-serif' }}>
+          <div className="card max-w-md w-full p-6 text-center space-y-4" style={{ border: '1px solid var(--border)' }}>
+            <div className="text-5xl">⚠️</div>
+            <h2 className="text-lg font-bold t-text">Interview Session Recovery</h2>
+            <p className="text-xs text-red-400 font-mono bg-[rgba(239,68,68,0.1)] p-3 rounded-xl text-left overflow-auto max-h-28">
+              {this.state.error?.message || 'An unexpected rendering error occurred.'}
+            </p>
+            <p className="text-xs t-muted">
+              We prevented a blank screen. You can recover your session or restart setup.
+            </p>
+            <div className="flex gap-2.5 pt-1">
+              <button
+                onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+                className="flex-1 py-2.5 rounded-xl btn-primary text-xs font-semibold text-white">
+                Reload Session
+              </button>
+              <button
+                onClick={() => {
+                  try { sessionStorage.removeItem('hiremind_active_interview'); } catch {}
+                  window.location.href = '/interview';
+                }}
+                className="flex-1 py-2.5 rounded-xl btn-outline text-xs">
+                Reset Setup
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ─────────────────────────────────────────────────────────────────── */
 /*  CAMERA COMPONENT  (self-contained, never crashes parent)          */
@@ -929,14 +998,60 @@ export default function Interview() {
     finishRef.current?.(answersRef.current);
   }, []));
 
+  /* ── restore active interview from sessionStorage on mount ── */
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('hiremind_active_interview');
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data?.stage === 'interview' && Array.isArray(data.questions) && data.questions.length > 0) {
+          setQuestions(data.questions);
+          setCurrentQ(data.currentQ || 0);
+          setAnswers(data.answers || []);
+          if (data.selectedRole) setSelectedRole(data.selectedRole);
+          if (data.selectedTechs) setSelectedTechs(data.selectedTechs);
+          if (data.difficulty) setDifficulty(data.difficulty);
+          if (data.count) setCount(data.count);
+          if (data.selectedAI) setSelectedAI(data.selectedAI);
+          setStage('interview');
+          timer.start();
+        }
+      }
+    } catch (err) {
+      console.warn('[Session restore error]:', err);
+    }
+  }, []);
+
+  /* ── sync active interview to sessionStorage ── */
+  useEffect(() => {
+    if (stage === 'interview' && questions.length > 0) {
+      sessionStorage.setItem('hiremind_active_interview', JSON.stringify({
+        stage: 'interview',
+        questions,
+        currentQ,
+        answers,
+        selectedRole,
+        selectedTechs,
+        difficulty,
+        count,
+        selectedAI,
+      }));
+    } else if (stage === 'submitting' || stage === 'done') {
+      sessionStorage.removeItem('hiremind_active_interview');
+    }
+  }, [stage, questions, currentQ, answers, selectedRole, selectedTechs, difficulty, count, selectedAI]);
+
   /* ── speak each question ── */
   useEffect(() => {
     if (stage !== 'interview' || !questions[currentQ] || !ttsEnabled) return;
-    const q = `Question ${currentQ + 1}. ${questions[currentQ]}`;
+    const rawQ = questions[currentQ];
+    const qText = typeof rawQ === 'string' ? rawQ : (rawQ?.question || '');
+    if (!qText) return;
+    const q = `Question ${currentQ + 1}. ${qText}`;
     setIsSpeaking(true);
     speakText(q, selectedAI, () => setIsSpeaking(true), () => setIsSpeaking(false));
     return () => stopSpeaking();
-  }, [currentQ, stage, ttsEnabled, selectedAI]);
+  }, [currentQ, stage, ttsEnabled, selectedAI, questions]);
 
   /* ── stop TTS on stage exit ── */
   useEffect(() => {
@@ -981,12 +1096,13 @@ export default function Interview() {
         undefined,
         selectedTechs
       );
-      const qs = res.data.questions;
-      if (!qs?.length) throw new Error('No questions returned for this configuration.');
+      const qs = res.data?.questions;
+      if (!qs || !qs.length) throw new Error('No questions returned for this configuration.');
       setQuestions(qs); setCurrentQ(0); setAnswers([]); setCurrentAns('');
       setPostureLog([]);
       setStage('interview'); timer.start();
     } catch (e) {
+      console.error('[startInterview Error]', e);
       setError(e.response?.data?.message || e.message || 'Failed to load questions — check server connection');
     } finally {
       setLoading(false);
@@ -1028,8 +1144,17 @@ export default function Interview() {
         tabSwitches:    antiCheat.warningCount,
         cheatingEvents: antiCheat.violations,
       });
-      navigate(`/feedback/${res.data.session._id}`);
+
+      sessionStorage.removeItem('hiremind_active_interview');
+      const sessionId = res.data?.session?._id || res.data?._id;
+      if (sessionId) {
+        setStage('done');
+        navigate(`/feedback/${sessionId}`);
+      } else {
+        throw new Error('Session saved but ID not returned.');
+      }
     } catch (e) {
+      console.error('[finishInterview Error]', e);
       setError('Save failed: ' + (e.response?.data?.message || e.message));
       setStage('interview'); timer.start();
     }
@@ -1042,7 +1167,8 @@ export default function Interview() {
 
   /* ══════════════════════════════════════════════════════════ */
   return (
-    <div className="min-h-screen t-bg" style={{ fontFamily:'Inter, sans-serif' }}>
+    <InterviewErrorBoundary>
+      <div className="min-h-screen t-bg" style={{ fontFamily:'Inter, sans-serif' }}>
       <Navbar />
 
       {/* Anti-cheat overlay */}
@@ -1492,6 +1618,33 @@ export default function Interview() {
           )}
 
 
+          {/* ═══════════════ INTERVIEW (EMPTY RECOVERY) ═══════════════ */}
+          {stage === 'interview' && (!questions || questions.length === 0) && (
+            <motion.div key="empty-session"
+              initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} exit={{opacity:0}}
+              className="card p-8 max-w-md mx-auto my-12 text-center space-y-4"
+              style={{ border: '1px solid var(--border)' }}>
+              <div className="text-5xl">📋</div>
+              <h3 className="text-lg font-bold t-text">No Interview Questions Loaded</h3>
+              <p className="text-xs t-muted leading-relaxed">
+                The interview session is empty. You can return to configuration to choose your questions or re-initialize.
+              </p>
+              <div className="flex gap-2.5 justify-center pt-2">
+                <button
+                  onClick={() => {
+                    try { sessionStorage.removeItem('hiremind_active_interview'); } catch {}
+                    setStage('setup');
+                  }}
+                  className="btn-primary py-2.5 px-5 rounded-xl text-xs font-semibold text-white">
+                  Back to Setup
+                </button>
+                <button onClick={startInterview} className="btn-outline py-2.5 px-5 rounded-xl text-xs">
+                  Retry Loading
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {/* ═══════════════ INTERVIEW ═══════════════ */}
           {stage === 'interview' && questions.length > 0 && (
             <motion.div key="interview"
@@ -1645,7 +1798,9 @@ export default function Interview() {
                             <span className="text-xs t-muted ml-1">Speaking...</span>
                           </div>
                         )}
-                        <p className="text-lg font-medium t-text leading-relaxed">{questions[currentQ]}</p>
+                        <p className="text-lg font-medium t-text leading-relaxed">
+                          {typeof questions[currentQ] === 'string' ? questions[currentQ] : (questions[currentQ]?.question || '')}
+                        </p>
                       </div>
                     </div>
                   </motion.div>
@@ -1670,7 +1825,10 @@ export default function Interview() {
                   ))}
                   {ttsEnabled && (
                     <button
-                      onClick={() => speakText(questions[currentQ], selectedAI, () => setIsSpeaking(true), () => setIsSpeaking(false))}
+                      onClick={() => {
+                        const qStr = typeof questions[currentQ] === 'string' ? questions[currentQ] : (questions[currentQ]?.question || '');
+                        if (qStr) speakText(qStr, selectedAI, () => setIsSpeaking(true), () => setIsSpeaking(false));
+                      }}
                       className="px-3 py-2 rounded-xl text-sm border btn-outline">
                       🔊 Replay
                     </button>
@@ -1800,20 +1958,45 @@ export default function Interview() {
           {stage === 'submitting' && (
             <motion.div key="submitting"
               initial={{opacity:0}} animate={{opacity:1}}
-              className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+              className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
               <motion.div
                 animate={{scale:[1,1.1,1]}} transition={{duration:1.2, repeat:Infinity}}
-                className="text-7xl mb-6">🧠</motion.div>
-              <h2 className="font-display font-bold text-2xl t-text mb-3">Analyzing Your Performance...</h2>
-              <p className="t-muted mb-6">Our AI is evaluating your answers.</p>
+                className="text-7xl mb-2">🧠</motion.div>
+              <h2 className="font-display font-bold text-2xl t-text">Analyzing Your Performance...</h2>
+              <p className="t-muted text-sm max-w-sm">Our AI is evaluating your technical answers and RAG concept coverage.</p>
               <div className="w-10 h-10 border-2 border-t-transparent rounded-full animate-spin mx-auto"
                 style={{borderColor:'var(--accent)', borderTopColor:'transparent'}}/>
-              {error && <p className="text-red-400 text-sm mt-6">{error}</p>}
+              {error && (
+                <div className="card p-4 rounded-xl border border-red-500/30 bg-red-500/10 max-w-sm mx-auto text-left space-y-3">
+                  <p className="text-red-400 text-xs font-mono">{error}</p>
+                  <button
+                    onClick={() => { setStage('interview'); setError(''); }}
+                    className="w-full py-2 rounded-lg btn-outline text-xs text-white">
+                    Back to Interview
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* ═══════════════ DONE ═══════════════ */}
+          {stage === 'done' && (
+            <motion.div key="done"
+              initial={{opacity:0}} animate={{opacity:1}}
+              className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
+              <motion.div
+                animate={{scale:[1,1.15,1]}} transition={{duration:1, repeat:Infinity}}
+                className="text-7xl mb-2">🎉</motion.div>
+              <h2 className="font-display font-bold text-2xl t-text">Interview Completed!</h2>
+              <p className="t-muted text-sm">Opening your performance assessment and detailed feedback report...</p>
+              <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto"
+                style={{borderColor:'var(--accent)', borderTopColor:'transparent'}}/>
             </motion.div>
           )}
 
         </AnimatePresence>
       </main>
     </div>
+    </InterviewErrorBoundary>
   );
 }

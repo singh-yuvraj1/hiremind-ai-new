@@ -32,6 +32,13 @@ connectDB()
   .then(async () => {
     console.log("✅ MongoDB Connected");
 
+    try {
+      const { seedQuestionBank } = require('./seed/questionsSeed');
+      await seedQuestionBank();
+    } catch (qErr) {
+      console.warn('[Question Bank Seed Warning]', qErr.message);
+    }
+
     if (process.env.NODE_ENV === "development") {
       try {
         const { seedJobs } = require('./seed/jobs');
